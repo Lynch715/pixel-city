@@ -1,0 +1,4302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>像素模拟城市 v2</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: #14161c; color: #d8dde8;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", monospace;
+    font-size: 12px; overflow: hidden;
+    display: flex; flex-direction: column;
+    user-select: none; -webkit-user-select: none;
+  }
+
+  #topbar {
+    display: flex; align-items: center; gap: 16px;
+    padding: 7px 12px; background: #1c1f28;
+    border-bottom: 2px solid #0c0e12; flex-shrink: 0; flex-wrap: wrap;
+  }
+  .stat { display: flex; flex-direction: column; gap: 2px; min-width: 58px; }
+  .stat .k { font-size: 9px; color: #6c7689; letter-spacing: .06em; }
+  .stat .v { font-size: 15px; font-weight: 700; color: #e8edf7; font-variant-numeric: tabular-nums; }
+  .v.neg { color: #e2685e; }
+  .v.warn { color: #d9a441; }
+
+  #rci { display: flex; align-items: flex-end; gap: 5px; height: 42px; }
+  .rci-col { width: 16px; height: 42px; position: relative; }
+  .rci-track { position: absolute; left: 0; right: 0; top: 5px; bottom: 12px; }
+  .rci-mid { position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: #39404f; }
+  .rci-bar { position: absolute; left: 2px; right: 2px; }
+  .rci-lab { position: absolute; bottom: 0; left: 3px; font-size: 9px; color: #6c7689; }
+
+  .sbtn {
+    background: #262b36; border: 1px solid #333a48; color: #98a2b6;
+    padding: 5px 9px; cursor: pointer; font-family: inherit; font-size: 11px; border-radius: 3px;
+  }
+  .sbtn:hover { background: #2e3441; }
+  .sbtn.on { background: #3f7d4e; border-color: #58a568; color: #eaf7ec; }
+  .sbtn.danger.on { background: #8a3d36; border-color: #c9584a; color: #ffe9e6; }
+  .speed-btns, .btn-row { display: flex; gap: 4px; }
+
+  input[type=range] { width: 84px; accent-color: #58a568; }
+  select {
+    background: #262b36; border: 1px solid #333a48; color: #b6bfd0;
+    font-family: inherit; font-size: 11px; padding: 4px 6px; border-radius: 3px;
+  }
+
+  #main { flex: 1; display: flex; min-height: 0; }
+  #toolbar {
+    width: 140px; flex-shrink: 0; background: #1c1f28;
+    border-right: 2px solid #0c0e12; padding: 8px; overflow-y: auto;
+  }
+  #toolbar::-webkit-scrollbar { width: 6px; }
+  #toolbar::-webkit-scrollbar-thumb { background: #333a48; border-radius: 3px; }
+  .tgroup { font-size: 9px; color: #5b6478; letter-spacing: .1em; margin: 10px 0 5px 2px; }
+  .tgroup:first-child { margin-top: 0; }
+  .tool {
+    display: flex; align-items: center; gap: 6px; width: 100%;
+    background: #262b36; border: 1px solid #333a48; border-radius: 3px;
+    color: #b6bfd0; padding: 5px 6px; margin-bottom: 3px; cursor: pointer;
+    font-family: inherit; font-size: 11px; text-align: left;
+  }
+  .tool:hover { background: #2e3441; }
+  .tool.on { background: #35507a; border-color: #5b86c9; color: #eef4ff; }
+  .tool .sw { width: 13px; height: 13px; flex-shrink: 0; border-radius: 2px; }
+  .tool .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tool .cost { margin-left: auto; font-size: 9px; color: #7d879b; }
+  .tool.on .cost { color: #c3d6f5; }
+  .tool.locked { opacity: .45; }
+  .tool.locked .cost { color: #7d879b; }
+
+  #canvasWrap { flex: 1; position: relative; overflow: hidden; background: #0e1015; }
+  canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; cursor: crosshair; }
+
+  #log { position: absolute; left: 10px; bottom: 10px; width: 268px;
+         display: flex; flex-direction: column-reverse; gap: 3px; pointer-events: none; }
+  .msg { background: rgba(18,20,26,.9); border-left: 3px solid #58a568;
+         padding: 4px 8px; font-size: 11px; color: #cdd5e3; border-radius: 0 3px 3px 0;
+         animation: fade 9s forwards; }
+  .msg.warn { border-left-color: #d9a441; }
+  .msg.bad  { border-left-color: #e2685e; }
+  @keyframes fade { 0%,82% { opacity: 1 } 100% { opacity: 0 } }
+
+  #query { position: absolute; right: 10px; top: 10px; width: 188px;
+           background: rgba(18,20,26,.95); border: 1px solid #333a48; border-radius: 4px;
+           padding: 8px 10px; display: none; }
+  #query h4 { font-size: 12px; color: #e8edf7; margin-bottom: 6px; }
+  #query .row { display: flex; justify-content: space-between; font-size: 11px; color: #98a2b6; padding: 1px 0; }
+  #query .row span:last-child { color: #d8dde8; }
+
+  #legend { pointer-events: none; position: absolute; right: 10px; bottom: 10px;
+            background: rgba(18,20,26,.9); border: 1px solid #333a48; border-radius: 4px;
+            padding: 6px 9px; display: none; }
+  #legend .t { font-size: 10px; color: #98a2b6; margin-bottom: 4px; }
+  #legend .sc { display: flex; height: 8px; width: 130px; border-radius: 2px; overflow: hidden; }
+  #legend .sc i { flex: 1; }
+  #legend .lb { display: flex; justify-content: space-between; font-size: 9px; color: #6c7689; margin-top: 2px; }
+
+  #hint { position: absolute; left: 10px; bottom: 150px; font-size: 10px;
+          color: #4d5566; line-height: 1.6; pointer-events: none; }
+  #budget {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    width: 330px; background: rgba(20,23,30,.97); border: 1px solid #3a4250;
+    border-radius: 6px; padding: 14px 16px; display: none; z-index: 20;
+    box-shadow: 0 12px 40px rgba(0,0,0,.5);
+  }
+  #budget h3 { font-size: 14px; color: #e8edf7; margin-bottom: 10px; }
+  .bsec { font-size: 9px; color: #5b6478; letter-spacing: .1em; margin: 10px 0 6px; }
+  .brow { display: flex; justify-content: space-between; align-items: center;
+          font-size: 11px; color: #98a2b6; padding: 3px 0; gap: 8px; }
+  .brow span:last-child { color: #d8dde8; font-variant-numeric: tabular-nums; }
+  .brow.strong span { color: #e8edf7; font-weight: 700; font-size: 12px; }
+  .brow input[type=range] { flex: 1; width: auto; }
+  .brow .val { min-width: 38px; text-align: right; }
+  .brow .nm { min-width: 52px; }
+  #goals {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    width: 340px; max-height: 82%; overflow-y: auto;
+    background: rgba(20,23,30,.97); border: 1px solid #3a4250;
+    border-radius: 6px; padding: 14px 16px; display: none; z-index: 20;
+    box-shadow: 0 12px 40px rgba(0,0,0,.5);
+  }
+  #goals h3 { font-size: 14px; color: #e8edf7; margin-bottom: 10px; }
+  .rbar { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #98a2b6; padding: 2px 0; }
+  .rbar .nm { min-width: 56px; }
+  .rbar .track { flex: 1; height: 7px; background: #2a303c; border-radius: 4px; overflow: hidden; }
+  .rbar .fill { height: 100%; border-radius: 4px; }
+  .rbar .val { min-width: 32px; text-align: right; color: #d8dde8; }
+  .ms { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 11px;
+        border-bottom: 1px solid #262c37; }
+  .ms .dot { width: 9px; height: 9px; border-radius: 50%; background: #3a4250; flex-shrink: 0; }
+  .ms.done .dot { background: #5fd08a; }
+  .ms .t { color: #98a2b6; }
+  .ms.done .t { color: #e8edf7; }
+  .ms .perk { margin-left: auto; color: #6c7689; font-size: 10px; text-align: right; }
+  #charts {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    width: 648px; max-height: 88%; overflow-y: auto;
+    background: rgba(20,23,30,.97); border: 1px solid #3a4250;
+    border-radius: 6px; padding: 14px 16px; display: none; z-index: 20;
+    box-shadow: 0 12px 40px rgba(0,0,0,.5);
+  }
+  #charts h3 { font-size: 14px; color: #e8edf7; margin-bottom: 10px; }
+  .cwrap { margin-bottom: 12px; }
+  .ctitle { font-size: 10px; color: #6c7689; letter-spacing: .08em; margin-bottom: 4px; }
+  #charts canvas { display: block; width: 100%; background: #171a21; border-radius: 4px; }
+  .clegend { display: flex; gap: 10px; font-size: 10px; color: #98a2b6; margin-top: 4px; align-items: center; }
+  .clegend i { width: 9px; height: 3px; border-radius: 2px; display: inline-block; margin-right: 3px; }
+  /* ---------- 触摸辅助按钮 ---------- */
+  #touchbar { position: absolute; right: 10px; bottom: 10px; display: none; gap: 6px; z-index: 12; }
+  body.touch #touchbar { display: flex; }
+  .tbtn {
+    background: rgba(28,31,40,.92); border: 1px solid #3a4250; color: #b6bfd0;
+    border-radius: 6px; font-family: inherit; font-size: 13px; padding: 0 12px;
+    min-width: 46px; height: 46px; cursor: pointer; touch-action: manipulation;
+  }
+  .tbtn.on { background: #35507a; border-color: #5b86c9; color: #eef4ff; }
+
+  /* ---------- 竖屏引导 ---------- */
+  #rotate {
+    position: fixed; inset: 0; background: #14161c; z-index: 100;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; color: #98a2b6; text-align: center; padding: 24px;
+  }
+  #rotate .ricon { font-size: 54px; color: #5b86c9; transform: rotate(90deg); }
+  #rotate .rsub { font-size: 11px; color: #5b6478; }
+  @media (orientation: portrait) {
+    body.touch #rotate { display: flex; }
+  }
+
+  /* ---------- 横屏手机紧凑布局 ---------- */
+  body.touch #canvasWrap { touch-action: none; }
+  body.touch canvas { cursor: default; }
+  body.touch .sbtn { min-height: 34px; padding: 6px 10px; }
+  body.touch input[type=range] { height: 28px; }
+  body.touch .tool { padding: 8px 6px; margin-bottom: 5px; }
+
+  @media (max-height: 560px) {
+    #legend { bottom: auto; top: 8px; right: 184px; }
+    #topbar { padding: 4px 8px; gap: 9px; }
+    .stat { min-width: 44px; gap: 0; }
+    .stat .k { font-size: 8px; }
+    .stat .v { font-size: 12px; }
+    #rci { height: 30px; gap: 4px; }
+    .rci-col { width: 13px; height: 30px; }
+    .rci-track { top: 3px; bottom: 9px; }
+    .rci-lab { font-size: 8px; }
+    .sbtn { font-size: 10px; padding: 5px 7px; }
+    #toolbar { width: 104px; padding: 5px; }
+    .tool { font-size: 10px; gap: 4px; padding: 6px 4px; }
+    .tool .sw { width: 11px; height: 11px; }
+    .tool .cost { font-size: 8px; }
+    .tgroup { font-size: 8px; margin: 6px 0 3px 2px; }
+    #minimap { width: 92px; height: 92px; }
+    #mmLabel { top: 106px; }
+    #hint { display: none; }
+    #log { width: 210px; bottom: 62px; }
+    .msg { font-size: 10px; padding: 3px 6px; }
+    /* 面板改为贴合视口，内部滚动 */
+    #budget, #goals, #charts {
+      max-height: calc(100% - 16px); top: 8px; transform: translate(-50%, 0);
+      overflow-y: auto; padding: 10px 12px;
+    }
+    #budget { width: 300px; }
+    #goals  { width: 310px; }
+    #charts { width: min(96vw, 620px); }
+    #charts canvas { height: 96px; }
+    #query { top: 8px; width: 168px; font-size: 10px; }
+    #query .row { font-size: 10px; }
+  }
+  /* 次要指标在窄屏上收起来，靠「详情」按钮展开 */
+  @media (max-width: 900px) {
+    body.compact .sec { display: none !important; }
+    body.compact.showsec .stat.sec { display: flex !important; }
+    body.compact.showsec .btn-row.sec { display: flex !important; }
+    body.compact.showsec div.sec { display: flex !important; }
+    body.compact #topbar { flex-wrap: wrap; row-gap: 5px; }
+  }
+  @media (min-width: 901px) { #btnSec { display: none; } }
+
+  #minimap { position: absolute; left: 10px; top: 10px; border: 1px solid #333a48;
+             image-rendering: pixelated; background: #0e1015; cursor: pointer; }
+  #mmLabel { pointer-events: none; position: absolute; left: 10px; top: 142px; font-size: 9px; color: #6c7689; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="stat"><span class="k">资金</span><span class="v" id="sMoney">$0</span></div>
+  <div class="stat"><span class="k">人口</span><span class="v" id="sPop">0</span></div>
+  <div class="stat sec"><span class="k">日期</span><span class="v" id="sDate">1900.1</span></div>
+  <div class="stat sec"><span class="k">时刻</span><span class="v" id="sClock">--:--</span></div>
+  <div class="stat sec"><span class="k">天气</span><span class="v" id="sWeather">夏 · 晴</span></div>
+  <div class="stat sec"><span class="k">收支/月</span><span class="v" id="sFlow">$0</span></div>
+  <div class="stat sec"><span class="k">电力</span><span class="v" id="sPower">0/0</span></div>
+  <div class="stat sec"><span class="k">供水</span><span class="v" id="sWater">0/0</span></div>
+  <div class="stat sec"><span class="k">地铁客流</span><span class="v" id="sMetro">0</span></div>
+  <div id="rci"></div>
+  <div class="stat"><span class="k">市长评分</span><span class="v" id="sRating">50</span></div>
+  <button class="sbtn" id="btnSec">详情</button>
+  <button class="sbtn" id="btnBudget">预算 ▸</button>
+  <button class="sbtn" id="btnGoals">目标 ▸</button>
+  <button class="sbtn" id="btnCharts">图表 ▸</button>
+  <div class="sec" style="display:flex;align-items:center;gap:5px">
+    <button class="sbtn on" id="btnSound">♪ 开</button>
+    <input type="range" id="vol" min="0" max="100" value="50" style="width:64px">
+  </div>
+  <div style="display:flex;align-items:center;gap:6px">
+    <span style="font-size:9px;color:#6c7689">数据视图</span>
+    <select id="overlay"></select>
+  </div>
+  <div class="speed-btns" id="speeds"></div>
+  <div class="btn-row sec">
+    <button class="sbtn danger on" id="disToggle" title="随机灾难开关">灾难 开</button>
+    <select id="disMenu"><option value="">降灾…</option></select>
+  </div>
+  <div class="btn-row sec">
+    <button class="sbtn" id="btnSave">存档</button>
+    <button class="sbtn" id="btnLoad">读档</button>
+    <button class="sbtn" id="btnExport">导出</button>
+    <button class="sbtn" id="btnImport">导入</button>
+    <button class="sbtn" id="btnNew">新地图</button>
+  </div>
+  <input type="file" id="fileIn" accept=".json" style="display:none">
+</div>
+
+<div id="rotate"><div class="ricon">▭</div><div>请横屏游玩</div><div class="rsub">这是一张 64×64 的城市地图，横屏才放得下</div></div>
+
+<div id="main">
+  <div id="toolbar"></div>
+  <div id="canvasWrap">
+    <canvas id="cv"></canvas>
+    <canvas id="minimap" width="128" height="128"></canvas>
+    <div id="mmLabel">小地图</div>
+    <div id="query"></div>
+    <div id="legend"><div class="t"></div><div class="sc"></div><div class="lb"><span>低</span><span>高</span></div></div>
+    <div id="budget">
+      <h3>市政预算</h3>
+      <div class="bsec">分区税率</div>
+      <div id="taxRows"></div>
+      <div class="bsec">部门拨款</div>
+      <div id="fundRows"></div>
+      <div class="bsec">收支</div>
+      <div class="brow"><span>月收入</span><span id="bIncome">$0</span></div>
+      <div class="brow"><span>月支出</span><span id="bExpense">$0</span></div>
+      <div class="brow"><span>其中偿债与利息</span><span id="bDebt">$0</span></div>
+      <div class="brow strong"><span>净额</span><span id="bNet">$0</span></div>
+      <button class="sbtn" id="btnBond" style="width:100%;margin-top:8px">发行市政债（+$12,000，月还 $138 × 120）</button>
+      <div class="brow" style="margin-top:4px"><span>未偿债券</span><span id="bBonds">0 / 4</span></div>
+      <button class="sbtn" id="btnBudgetClose" style="width:100%;margin-top:8px">关闭</button>
+    </div>
+    <div id="goals">
+      <h3>城市目标</h3>
+      <div class="brow strong"><span>市长评分</span><span id="gRating">50 / 100</span></div>
+      <div id="ratingBars"></div>
+      <div class="bsec">里程碑</div>
+      <div id="milestones"></div>
+      <button class="sbtn" id="btnGoalsClose" style="width:100%;margin-top:10px">关闭</button>
+    </div>
+    <div id="charts">
+      <h3>城市历史</h3>
+      <div class="cwrap"><div class="ctitle">人口构成</div><canvas id="chPop" width="600" height="150"></canvas>
+        <div class="clegend"><i style="background:#5fbf6a"></i>住宅<i style="background:#5b9bd8"></i>商业<i style="background:#d8b64a"></i>工业</div></div>
+      <div class="cwrap"><div class="ctitle">财政</div><canvas id="chMoney" width="600" height="150"></canvas>
+        <div class="clegend"><i style="background:#7ed88a"></i>月收入<i style="background:#e2685e"></i>月支出<i style="background:#e8edf7"></i>资金</div></div>
+      <div class="cwrap"><div class="ctitle">城市指标</div><canvas id="chStat" width="600" height="150"></canvas>
+        <div class="clegend"><i style="background:#f2c94c"></i>评分<i style="background:#e24a8a"></i>犯罪<i style="background:#8a6a3a"></i>污染<i style="background:#e2685e"></i>拥堵<i style="background:#c98ad8"></i>教育</div></div>
+      <button class="sbtn" id="btnChartsClose" style="width:100%;margin-top:8px">关闭</button>
+    </div>
+    <div id="touchbar">
+      <button class="tbtn" id="btnPan" title="单指平移地图">✥ 移动</button>
+      <button class="tbtn" id="btnZoomIn">＋</button>
+      <button class="tbtn" id="btnZoomOut">－</button>
+    </div>
+    <div id="log"></div>
+    <div id="hint">左键拖动绘制 · 右键拖动平移 · 滚轮缩放<br>数字键切换工具 · 空格暂停 · 点小地图跳转</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =======================================================================
+   0. 常量与建筑定义
+   ======================================================================= */
+const W = 64, H = 64, N = W * H;
+const TS = 32;                     // v3 起改为 32px：16px 下每栋楼只有 256 个像素，画不出细节
+
+/* 设备判定。粗指针 = 触摸设备；短边 < 900 视为手机/小平板，走紧凑布局。 */
+const COARSE   = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+const SHORTSIDE= Math.min(window.screen.width, window.screen.height);
+const IS_MOBILE= COARSE && SHORTSIDE < 900;
+const IS_TABLET= COARSE && SHORTSIDE >= 900;
+const ZOOM_MIN = IS_MOBILE ? 0.28 : 0.3, ZOOM_MAX = 4;
+if(COARSE) document.body.classList.add("touch");
+if(IS_MOBILE) document.body.classList.add("compact");
+
+const T = { LAND:0, WATER:1, TREE:2, ROAD:3, WIRE:4, R:5, C:6, I:7, BLD:8, RUBBLE:9 };
+const isZone = t => t >= T.R && t <= T.I;
+
+const CAP = {
+  [T.R]: [0, 8, 26, 68],
+  [T.C]: [0, 5, 17, 46],
+  [T.I]: [0, 7, 21, 54],
+};
+
+const AVE_MULT = 2.5;             // 大道容量倍数
+const STATION_R = 5;              // 地铁站接驳半径（步行可达）
+const TRANSIT_SHARE = 0.72;       // 接驳成功时从路网转移走的通勤比例
+
+/* 建筑定义表。w/h 为占地格数，power/water 为产能，pUse/wUse 为消耗，
+   radius 为服务覆盖半径。所有建筑都需要通电通水通路才能正常运转。 */
+const BLD = [
+  { key:"coal",   name:"燃煤电厂",   cat:"电力", w:3,h:3, cost:2400,  up:70,  power:1200, pUse:0, wUse:30, pollute:.26, sw:"#c9584a" },
+  { key:"gas",    name:"燃气电厂",   cat:"电力", w:3,h:3, cost:5200,  up:130, power:2400, pUse:0, wUse:30, pollute:.09, sw:"#e0a24a" },
+  { key:"solar",  name:"太阳能电站", cat:"电力", w:4,h:4, cost:8200,  up:22,  power:1900, pUse:0, wUse:0,  pollute:0,   sw:"#4a8fd8" },
+  { key:"nuke",   name:"核电站",     cat:"电力", w:4,h:4, cost:18000, up:330, power:6500, pUse:0, wUse:90, pollute:0,   melt:true, sw:"#7ad86a" },
+  { key:"pump",   name:"抽水站",     cat:"供水", w:2,h:2, cost:700,   up:16,  water:1000, pUse:35, needShore:true, sw:"#3fa8cc" },
+  { key:"tower",  name:"水塔",       cat:"供水", w:2,h:2, cost:1500,  up:14,  water:420,  pUse:15, sw:"#8ad8e8" },
+  { key:"police", name:"警察局",     cat:"服务", w:2,h:2, cost:1700,  up:48,  kind:"police", radius:11, pUse:24, wUse:14, sw:"#4a6fd8" },
+  { key:"fire",   name:"消防站",     cat:"服务", w:2,h:2, cost:1700,  up:48,  kind:"fire",   radius:10, pUse:24, wUse:26, sw:"#d84a4a" },
+  { key:"school", name:"学校",       cat:"服务", w:3,h:2, cost:2800,  up:72,  kind:"school", radius:12, pUse:30, wUse:34, sw:"#d8c84a" },
+  { key:"metro",  name:"地铁站",     cat:"交通", w:2,h:2, cost:2200,  up:60,  kind:"metro",  radius:STATION_R, pUse:40, wUse:10, needSubway:true, sw:"#4ac0a0" },
+  // 地标：人口达标才解锁，全城唯一，各带一项全市增益
+  { key:"townhall", name:"市政厅", cat:"地标", w:3,h:3, cost:6000,  up:130, pUse:40, wUse:40, unlock:2000,  unique:true, sw:"#d8c49a",
+    perk:"全市地价 +8%" },
+  { key:"stadium",  name:"体育场", cat:"地标", w:4,h:3, cost:14000, up:260, pUse:80, wUse:70, unlock:6000,  unique:true, sw:"#6ac47a",
+    perk:"市民满意度提升，各类需求 +" },
+  { key:"univ",     name:"大学",   cat:"地标", w:4,h:3, cost:22000, up:340, pUse:95, wUse:85, unlock:15000, unique:true, sw:"#c98ad8",
+    perk:"全市教育水平 +18%" },
+  { key:"tvtower",  name:"电视塔", cat:"地标", w:2,h:2, cost:18000, up:190, pUse:70, wUse:20, unlock:30000, unique:true, sw:"#e0685a",
+    perk:"商业需求大幅提升" },
+];
+const bldIdx = {}; BLD.forEach((b,i) => bldIdx[b.key] = i);
+
+const COST = { road:10, avenue:34, wire:5, zone:25, bulldoze:4, park:60, subway:52 };
+const UPKEEP = { road:.4, avenue:1.1, wire:.15, park:3, subway:.9 };
+const ROAD_CAP = 46;              // 街道单格通行能力，超出即拥堵
+// 道路养护拨款不足时路面失修，通行能力跟着掉
+const capOf = i => ROAD_CAP * (map.roadTier[i] ? AVE_MULT : 1)
+                 * (0.6 + clamp(game.funding.road, 0, 1.5) * 0.4)
+                 * (isSnow() ? 0.72 : isWet() ? 0.88 : 1);   // 雨雪天路面通行能力下降
+
+/* =======================================================================
+   1. 工具函数
+   ======================================================================= */
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+const idx = (x,y) => y*W + x;
+const inb = (x,y) => x>=0 && y>=0 && x<W && y<H;
+const clamp = (v,a,b) => v<a?a:v>b?b:v;
+const lerp = (a,b,t) => a+(b-a)*t;
+const fmtMoney = v => (v<0?"-$":"$") + Math.abs(Math.round(v)).toLocaleString("en-US");
+const DIR4 = [[1,0],[-1,0],[0,1],[0,-1]];
+
+/* =======================================================================
+   2. 地图状态
+   ======================================================================= */
+const map = {
+  type:      new Uint8Array(N),
+  density:   new Uint8Array(N),
+  variant:   new Uint8Array(N),
+  bld:       new Uint8Array(N),      // BLD 索引 + 1，0 表示不是建筑
+  anchor:    new Int32Array(N),
+  age:       new Uint16Array(N),
+  park:      new Uint8Array(N),
+  roadTier:  new Uint8Array(N),      // 0=街道 1=大道
+  subway:    new Uint8Array(N),      // 地下线路，与地面地物共存
+  transit:   new Uint8Array(N),      // 该住宅地块能否坐上地铁
+
+  powered:   new Uint8Array(N),
+  watered:   new Uint8Array(N),
+  roadDist:  new Uint8Array(N),
+  onFire:    new Uint8Array(N),
+
+  pollution: new Float32Array(N),
+  landval:   new Float32Array(N),
+  scenic:    new Float32Array(N),
+  traffic:   new Float32Array(N),
+  crime:     new Float32Array(N),
+  edu:       new Float32Array(N),
+  fireCov:   new Float32Array(N),
+  polCov:    new Float32Array(N),
+  radiation: new Float32Array(N),
+};
+
+const game = {
+  money: 25000, ticks: 0, year: 1900, month: 1, speed: 1,
+  tax: { R:7, C:7, I:7 },                           // 三类分区分开计税
+  funding: { police:1, fire:1, school:1, road:1 },  // 各部门拨款比例 0~1.5
+  bonds: [], debtPay: 0,                            // 市政债
+  pop: { R:0, C:0, I:0 },
+  demand: { R:.55, C:.2, I:.35 },
+  lastIncome: 0, lastExpense: 0,
+  buildings: [],                     // {i,x,y,b}  b = BLD 索引
+  parks: 0,
+  powerLoad: 0, powerCap: 0,
+  waterLoad: 0, waterCap: 0,
+  disastersOn: true,
+  tornado: null,
+  seed: 0,
+  avgCrime: 0, avgTraffic: 0, avgPol: 0, avgEdu: 0,
+  transitRiders: 0, metroStations: 0, metroLines: 0,
+  season: 1, weather: "clear", wIntensity: 0, wTimer: 0,
+  history: { t:[], R:[], C:[], I:[], money:[], income:[], expense:[],
+             rating:[], crime:[], pol:[], traffic:[], edu:[] },
+  landmarks: {},                 // key -> 是否已建成且在运转
+  peakPop: 0, rating: 50,
+  fires: 0,
+};
+
+/* ---- 地形 ---- */
+function valueNoise(seed, scale){
+  const rnd = mulberry32(seed);
+  const gw = Math.ceil(W/scale)+2, gh = Math.ceil(H/scale)+2;
+  const g = new Float32Array(gw*gh);
+  for(let i=0;i<g.length;i++) g[i] = rnd();
+  return (x,y) => {
+    const fx = x/scale, fy = y/scale;
+    const x0 = Math.floor(fx), y0 = Math.floor(fy);
+    const tx = fx-x0, ty = fy-y0;
+    const sx = tx*tx*(3-2*tx), sy = ty*ty*(3-2*ty);
+    const a = g[y0*gw+x0],     b = g[y0*gw+x0+1];
+    const c = g[(y0+1)*gw+x0], d = g[(y0+1)*gw+x0+1];
+    return lerp(lerp(a,b,sx), lerp(c,d,sx), sy);
+  };
+}
+
+function genTerrain(seed){
+  game.seed = seed;
+  const n1 = valueNoise(seed,     14);
+  const n2 = valueNoise(seed+77,   6);
+  const n3 = valueNoise(seed+911,  3);
+  const rnd = mulberry32(seed+5);
+
+  for(const k of ["type","density","bld","age","park","onFire","roadTier","subway"]) map[k].fill(0);
+  for(const k of ["pollution","landval","traffic","crime","edu","fireCov","polCov","radiation"]) map[k].fill(0);
+  map.anchor.fill(-1);
+  game.buildings.length = 0;
+  game.parks = 0;
+  for(const k of Object.keys(agents)) agents[k].length = 0;
+  game.smokeSrc = [];
+  game.tornado = null;
+
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    const i = idx(x,y);
+    map.variant[i] = (rnd()*256)|0;
+    const e = n1(x,y)*.62 + n2(x,y)*.28 + n3(x,y)*.10;
+    if(e < .355)                      map.type[i] = T.WATER;
+    else if(e > .60 && n3(x,y) > .42) map.type[i] = T.TREE;
+    else                              map.type[i] = T.LAND;
+  }
+  // 去掉孤立水坑
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    const i = idx(x,y);
+    if(map.type[i] !== T.WATER) continue;
+    let n = 0;
+    for(const [dx,dy] of DIR4) if(inb(x+dx,y+dy) && map.type[idx(x+dx,y+dy)]===T.WATER) n++;
+    if(n === 0) map.type[i] = T.LAND;
+  }
+  computeScenic();
+}
+
+function computeScenic(){
+  const dist = new Float32Array(N).fill(99);
+  const q = [];
+  for(let i=0;i<N;i++){
+    const t = map.type[i];
+    if(t===T.WATER || t===T.TREE || map.park[i]){ dist[i]=0; q.push(i); }
+  }
+  for(let h=0; h<q.length; h++){
+    const i = q[h];
+    if(dist[i] >= 6) continue;
+    const x=i%W, y=(i/W)|0;
+    for(const [dx,dy] of DIR4){
+      const nx=x+dx, ny=y+dy;
+      if(!inb(nx,ny)) continue;
+      const j = idx(nx,ny);
+      if(dist[j] > dist[i]+1){ dist[j] = dist[i]+1; q.push(j); }
+    }
+  }
+  for(let i=0;i<N;i++) map.scenic[i] = clamp(1 - dist[i]/7, 0, 1) * .45;
+}
+
+/* =======================================================================
+   3. 像素美术（全部程序化绘制，32×32 瓦片）
+   统一光源在左上：受光面提亮 1 阶、背光面压暗 1 阶、投影一律落向右下。
+   调色板走「清新明亮」：草地偏黄绿，建筑用浅色系，阴影用冷色而非纯黑。
+   ======================================================================= */
+const P = {
+  dirt:"#b8996c", dirtD:"#9b7d53", path:"#ddcda6", pathD:"#c2b189",
+  water:"#3d8cc4", waterD:"#2c6ea6", waterL:"#5aa8da", waterHi:"#a6dbf0",
+  sand:"#e8d6a4", sandD:"#cbb684", sandWet:"#ab9569",
+  tree:"#3f8442", treeD:"#2b5f31", treeL:"#59a654", trunk:"#7d5837", trunkD:"#5c3f27",
+  asph:"#5e6570", asphD:"#4b515b", asphL:"#737b87", asphPatch:"#565d67",
+  line:"#f2d75e", cross:"#e3e8ee",
+  conc:"#b9c0c9", concD:"#9aa1ac", concL:"#d4dae1", curb:"#868e9a",
+  lotPave:"#cdc7ba", lotPaveD:"#b0aa9c", lotPaveL:"#e2ddd2",
+  glass:"#9fd0ec", glassD:"#6ba6cf", glassDk:"#3d5570",
+  win:"#ffdc8a", winWarm:"#ffc95e", winOff:"#42506b",
+  metal:"#bcc3cb", metalD:"#959ca5", metalL:"#dae0e5",
+  shadow:"rgba(38,52,78,.20)", shadowHard:"rgba(30,42,66,.32)",
+  fire:["#ffe066","#ff9a3c","#e8452c"],
+  rubble:"#8b8278", rubbleD:"#6a6259", ash:"#4e4842",
+};
+/* 四季只换植被和地面色，建筑保持不变——否则整张图的辨识度会崩。
+   冬天是变化最大的一档：草地变雪、树只剩枝干。 */
+const SEASON = [
+  { nm:"春", grass:"#8cc65a", grassD:"#74b046", grassL:"#a8dc7c", grassHi:"#c8ec9c", grassDk:"#5d9440",
+    tree:"#5cae52", treeD:"#3f8440", treeL:"#7cc86c", treeHi:"#a8e08c", bloom:"#f7c4dc" },
+  { nm:"夏", grass:"#6faa46", grassD:"#5b9139", grassL:"#84be59", grassHi:"#a2d573", grassDk:"#4a7830",
+    tree:"#3f8442", treeD:"#2b5f31", treeL:"#59a654", treeHi:"#80c56d", bloom:null },
+  { nm:"秋", grass:"#a3a052", grassD:"#8a8744", grassL:"#bcb96a", grassHi:"#d2cf85", grassDk:"#6f6d38",
+    tree:"#c9843a", treeD:"#96562a", treeL:"#e0a04e", treeHi:"#f2c268", bloom:null },
+  { nm:"冬", grass:"#e4ecf2", grassD:"#c8d4de", grassL:"#f4f8fb", grassHi:"#ffffff", grassDk:"#aebcc8",
+    tree:"#6b5f52", treeD:"#4e4439", treeL:"#857767", treeHi:"#9c8d7a", bloom:null, snow:true },
+];
+const seasonOf = m => m>=3 && m<=5 ? 0 : m>=6 && m<=8 ? 1 : m>=9 && m<=11 ? 2 : 3;
+let SE = 1;                       // 当前季节；所有嵌了植被的精灵缓存键都要带上它
+
+/* 建筑配色成组给出：[墙, 墙受光, 墙背光, 屋顶, 屋顶受光, 屋顶背光] */
+const SKIN_R = [
+  ["#f2e6cd","#fdf6e6","#d3c3a2", "#d4785e","#e79176","#ad5c46"],
+  ["#ecdcc2","#fbf0dc","#cbb99a", "#7b8497","#96a0b2","#616a7b"],
+  ["#f0dfd0","#fdf1e6","#cfbca9", "#6f9a63","#89b57c","#587c4e"],
+  ["#e6d9c4","#f6ecdb","#c5b498", "#c05f52","#d8786a","#9a4a3f"],
+];
+const SKIN_C = [
+  ["#8fa4c4","#a9bbd6","#7286a5", "#5b6b86","#75849e","#47556c"],
+  ["#a3b6ce","#bccbdd","#8496b0", "#54637c","#6d7c94","#414e63"],
+  ["#93b3b0","#aecac6","#7a9895", "#4f6f74","#68878b","#3d585d"],
+];
+const SKIN_I = [
+  ["#b8b09c","#cfc8b6","#9a927d", "#8b8577","#a29c8d","#6f6a5e"],
+  ["#aca592","#c4bdac","#8e8774", "#7d7a70","#949186","#65635a"],
+];
+
+/* ---- 绘制原语 ---- */
+const spriteCache = new Map();
+function sprite(key, w, h, draw){
+  let s = spriteCache.get(key);
+  if(s) return s;
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const g = c.getContext("2d");
+  g.imageSmoothingEnabled = false;
+  draw(g);
+  spriteCache.set(key, c);
+  return c;
+}
+function px(g, x, y, w, h, col){ g.fillStyle = col; g.fillRect(x, y, w, h); }
+/* 带方向光的实体块 */
+function box(g, x, y, w, h, base, lit, dark){
+  px(g,x,y,w,h,base);
+  if(lit){ px(g,x,y,w,1,lit); px(g,x,y,1,h,lit); }
+  if(dark){ px(g,x,y+h-1,w,1,dark); px(g,x+w-1,y,1,h,dark); }
+}
+/* 统一投向右下的地面投影 */
+function shad(g, x, y, w, h, off){
+  const o = off===undefined ? 3 : off;
+  px(g, x+o, y+o, w, h, P.shadow);
+}
+/* 圆盘，用来堆树冠和罐体 */
+function disc(g, cx, cy, rad, col){
+  for(let dy=-rad; dy<=rad; dy++){
+    const w = Math.floor(Math.sqrt(Math.max(0, rad*rad - dy*dy)));
+    px(g, cx-w, cy+dy, w*2+1, 1, col);
+  }
+}
+/* 不规则色斑，比随机噪点自然 */
+function blob(g, cx, cy, rad, col, r){
+  for(let k=0;k<5;k++){
+    const w = rad + ((r()*rad)|0), h = rad + ((r()*rad)|0);
+    px(g, cx-(w>>1)+((r()*5)|0)-2, cy-(h>>1)+((r()*5)|0)-2, w, h, col);
+  }
+}
+/* ---- 地面 ---- */
+function grassSprite(v){
+  return sprite("g"+v+"_"+SE, TS, TS, g => {
+    const S = SEASON[SE], r = mulberry32(v*7919+13);
+    px(g,0,0,TS,TS,S.grass);
+    for(let k=0;k<4;k++) blob(g,(r()*TS)|0,(r()*TS)|0, 4+((r()*4)|0), r()<.5?S.grassD:S.grassL, r);
+    for(let k=0;k<26;k++){
+      const x=(r()*TS)|0, y=(r()*TS)|0;
+      px(g,x,y,1,2, r()<.42 ? S.grassHi : S.grassDk);
+    }
+    if(S.snow){
+      for(let k=0;k<5;k++) blob(g,(r()*TS)|0,(r()*TS)|0,3+((r()*3)|0),"#ffffff",r);
+    } else {
+      const nb = S.bloom ? 9 : 5;
+      for(let k=0;k<nb;k++)
+        px(g, 3+((r()*(TS-6))|0), 3+((r()*(TS-6))|0), 1,1,
+           S.bloom && r()<.55 ? S.bloom : (r()<.5 ? S.grassHi : S.grassDk));
+    }
+  });
+}
+function waterSprite(v, frame, shore){
+  return sprite("w"+v+"_"+frame+"_"+shore, TS, TS, g => {
+    px(g,0,0,TS,TS,P.water);
+    // 缓慢起伏的深浅带，比纯噪点更像水面
+    for(let y=0;y<TS;y++){
+      const t = Math.sin((y + v*2.7 + frame*3.1) * 0.38) + Math.sin((y - v*1.3) * 0.17)*0.5;
+      if(t > 0.85) px(g,0,y,TS,1,P.waterL);
+      else if(t < -0.95) px(g,0,y,TS,1,P.waterD);
+    }
+    const r = mulberry32(v*104729 + frame*31);
+    for(let k=0;k<8;k++){
+      const x=(r()*(TS-9))|0, y=(r()*TS)|0, w=3+((r()*6)|0);
+      px(g,x,y,w,1,P.waterHi);
+      if(r()<.5) px(g,x+1,y+1,w-2,1,P.waterL);
+    }
+    if(shore){
+      const r2 = mulberry32(v*7919);
+      const band = (x,y,w,h,horiz,flip) => {
+        px(g,x,y,w,h,P.sand);
+        // 干沙 -> 湿沙 -> 浪花，三层过渡
+        if(horiz) px(g, x, flip ? y-2 : y+h, w, 2, P.sandWet);
+        else      px(g, flip ? x-2 : x+w, y, 2, h, P.sandWet);
+        const n = horiz ? w : h;
+        for(let k=0;k<n;k++){
+          if(r2()<.42) continue;
+          if(horiz) px(g, x+k, flip ? y-3 : y+h+2, 1, 1, P.sandD);
+          else      px(g, flip ? x-3 : x+w+2, y+k, 1, 1, P.sandD);
+        }
+        for(let k=0;k<n;k+=2){
+          if(r2()<.5) continue;
+          if(horiz) px(g, x+k, flip ? y-4 : y+h+3, 2, 1, P.waterHi);
+          else      px(g, flip ? x-4 : x+w+3, y+k, 1, 2, P.waterHi);
+        }
+      };
+      if(shore&1) band(0,0,TS,4,true,false);
+      if(shore&4) band(0,TS-4,TS,4,true,true);
+      if(shore&8) band(0,0,4,TS,false,false);
+      if(shore&2) band(TS-4,0,4,TS,false,true);
+    }
+  });
+}
+function treeSprite(v){
+  v %= 12;
+  return sprite("t"+v+"_"+SE, TS, TS, g => {
+    const S = SEASON[SE];
+    g.drawImage(grassSprite(v%4),0,0);
+    const r = mulberry32(v*15485863+3);
+    const n = 1 + ((r()*2)|0);
+    for(let k=0;k<n;k++){
+      const cx = 8+((r()*17)|0), cy = 8+((r()*15)|0), rad = 5+((r()*3)|0);
+      px(g, cx-rad+3, cy+rad-1, rad*2-2, 3, P.shadow);
+      px(g, cx-1, cy+rad-2, 2, 5, P.trunkD);
+      px(g, cx-1, cy+rad-2, 1, 5, P.trunk);
+      if(S.snow){
+        for(let m=0;m<5;m++){
+          const a2 = -Math.PI/2 + (m-2)*0.5;
+          for(let d2=1; d2<rad; d2++)
+            px(g, cx+Math.round(Math.cos(a2)*d2), cy+Math.round(Math.sin(a2)*d2)-1, 1, 1, S.treeD);
+        }
+        for(let m=0;m<6;m++) px(g, cx-3+((r()*6)|0), cy-rad+((r()*3)|0), 2, 1, "#f4f8fb");
+      } else {
+        disc(g, cx, cy, rad, S.treeD);
+        disc(g, cx-1, cy-1, rad-1, S.tree);
+        disc(g, cx-2, cy-2, rad-3, S.treeL);
+        for(let m=0;m<4;m++)
+          px(g, cx-3+((r()*4)|0), cy-4+((r()*4)|0), 1, 1, S.treeHi);
+      }
+    }
+  });
+}
+
+/* ---- 道路：4 格草地边 / 4 格人行道 / 16 格沥青 ---- */
+const RA = 8, RB = 24, RS0 = 4, RS1 = 28;
+const AA = 5, AB = 27, AS0 = 2, AS1 = 30;        // 大道：沥青更宽，人行道压窄
+function roadSprite(mask, v, tier){
+  if(tier) return avenueSprite(mask, v);
+  return sprite("r"+mask+"_"+v+"_"+SE, TS, TS, g => {
+    const r = mulberry32(mask*7717 + v*131 + 3);
+    g.drawImage(grassSprite((mask+v)%4), 0, 0);
+
+    // 人行道
+    const sw = (x,y,w,h)=>px(g,x,y,w,h,P.conc);
+    sw(RS0,RS0,RS1-RS0,RS1-RS0);
+    if(mask&1) sw(RS0,0,RS1-RS0,RS0);
+    if(mask&2) sw(RS1,RS0,TS-RS1,RS1-RS0);
+    if(mask&4) sw(RS0,RS1,RS1-RS0,TS-RS1);
+    if(mask&8) sw(0,RS0,RS0,RS1-RS0);
+    // 铺装接缝
+    for(let k=0;k<TS;k+=8){
+      px(g,k,RS0,1,RS1-RS0,P.concD); px(g,RS0,k,RS1-RS0,1,P.concD);
+    }
+    for(let k=0;k<18;k++) px(g,(r()*TS)|0,(r()*TS)|0,1,1, r()<.5?P.concL:P.concD);
+
+    // 沥青
+    const seg = (x,y,w,h)=>px(g,x,y,w,h,P.asph);
+    seg(RA,RA,RB-RA,RB-RA);
+    if(mask&1) seg(RA,0,RB-RA,RA);
+    if(mask&2) seg(RB,RA,TS-RB,RB-RA);
+    if(mask&4) seg(RA,RB,RB-RA,TS-RB);
+    if(mask&8) seg(0,RA,RA,RB-RA);
+    // 沥青质感：补丁与细裂纹
+    for(let k=0;k<5;k++){
+      const x=RA+((r()*(RB-RA-5))|0), y=RA+((r()*(RB-RA-4))|0);
+      px(g,x,y,3+((r()*4)|0),2+((r()*2)|0), r()<.5?P.asphPatch:P.asphD);
+    }
+
+    // 路缘：靠人行道一侧压暗，形成清晰的边界
+    const curb=(x,y,w,h)=>px(g,x,y,w,h,P.curb);
+    if(!(mask&1)) curb(RA,RA,RB-RA,1);
+    if(!(mask&4)) curb(RA,RB-1,RB-RA,1);
+    if(!(mask&8)) curb(RA,RA,1,RB-RA);
+    if(!(mask&2)) curb(RB-1,RA,1,RB-RA);
+    if(mask&1){ curb(RA-1,0,1,RA); curb(RB,0,1,RA); }
+    if(mask&4){ curb(RA-1,RB,1,TS-RB); curb(RB,RB,1,TS-RB); }
+    if(mask&8){ curb(0,RA-1,RA,1); curb(0,RB,RA,1); }
+    if(mask&2){ curb(RB,RA-1,TS-RB,1); curb(RB,RB,TS-RB,1); }
+
+    const bits = (mask&1?1:0)+(mask&2?1:0)+(mask&4?1:0)+(mask&8?1:0);
+    // 中线
+    if(bits<=2 && (mask&1||mask&4) && !(mask&2) && !(mask&8))
+      for(let y=1;y<TS;y+=7) px(g,15,y,2,4,P.line);
+    if(bits<=2 && (mask&2||mask&8) && !(mask&1) && !(mask&4))
+      for(let x=1;x<TS;x+=7) px(g,x,15,4,2,P.line);
+    // 路口斑马线
+    if(bits>=3){
+      if(mask&1) for(let x=RA+1;x<RB-2;x+=4) px(g,x,1,2,5,P.cross);
+      if(mask&4) for(let x=RA+1;x<RB-2;x+=4) px(g,x,TS-6,2,5,P.cross);
+      if(mask&8) for(let y=RA+1;y<RB-2;y+=4) px(g,1,y,5,2,P.cross);
+      if(mask&2) for(let y=RA+1;y<RB-2;y+=4) px(g,TS-6,y,5,2,P.cross);
+    }
+    // 井盖
+    if(v===1 && bits<=2){ disc(g,16,16,2,P.asphD); disc(g,16,16,1,P.asphL); }
+    if(SEASON[SE].snow){
+      // 冬天：人行道积雪、路肩残雪，车道被压出来了
+      const sr = mulberry32(mask*31+v);
+      for(let k=0;k<26;k++){
+        const x=(sr()*TS)|0, y=(sr()*TS)|0;
+        if(x>=RA && x<RB && y>=RA && y<RB && sr()<.78) continue;
+        px(g,x,y,2,2, sr()<.6 ? "#eef4f8" : "#d6e2ea");
+      }
+      px(g,RA-1,RA-1,RB-RA+2,1,"#eef4f8"); px(g,RA-1,RB,RB-RA+2,1,"#eef4f8");
+    }
+    if(bits===0){ px(g,13,13,6,6,P.asphL); px(g,14,14,4,4,P.asph); }
+  });
+}
+/* 大道：双向两车道 + 中央绿化带，容量是街道的 2.5 倍 */
+function avenueSprite(mask, v){
+  return sprite("av"+mask+"_"+v+"_"+SE, TS, TS, g => {
+    const r = mulberry32(mask*4271 + v*97 + 11);
+    g.drawImage(grassSprite((mask+v)%4), 0, 0);
+    const sw=(x,y,w,h)=>px(g,x,y,w,h,P.conc);
+    sw(AS0,AS0,AS1-AS0,AS1-AS0);
+    if(mask&1) sw(AS0,0,AS1-AS0,AS0);
+    if(mask&2) sw(AS1,AS0,TS-AS1,AS1-AS0);
+    if(mask&4) sw(AS0,AS1,AS1-AS0,TS-AS1);
+    if(mask&8) sw(0,AS0,AS0,AS1-AS0);
+    for(let k=0;k<TS;k+=8){ px(g,k,AS0,1,AS1-AS0,P.concD); px(g,AS0,k,AS1-AS0,1,P.concD); }
+
+    const seg=(x,y,w,h)=>px(g,x,y,w,h,P.asph);
+    seg(AA,AA,AB-AA,AB-AA);
+    if(mask&1) seg(AA,0,AB-AA,AA);
+    if(mask&2) seg(AB,AA,TS-AB,AB-AA);
+    if(mask&4) seg(AA,AB,AB-AA,TS-AB);
+    if(mask&8) seg(0,AA,AA,AB-AA);
+    for(let k=0;k<6;k++)
+      px(g,AA+((r()*(AB-AA-5))|0),AA+((r()*(AB-AA-4))|0),3+((r()*4)|0),2, r()<.5?P.asphPatch:P.asphD);
+
+    const bits=(mask&1?1:0)+(mask&2?1:0)+(mask&4?1:0)+(mask&8?1:0);
+    const ns = (mask&1)||(mask&4), ew = (mask&2)||(mask&8);
+    // 中央绿化带：只在直路上画，路口要留出转弯空间
+    if(bits<=2 && ns && !ew){
+      px(g,14,0,4,TS,SEASON[SE].grass); px(g,14,0,1,TS,SEASON[SE].grassL); px(g,17,0,1,TS,SEASON[SE].grassDk);
+      for(let y=2;y<TS;y+=7){ disc(g,16,y,1,SEASON[SE].treeD); px(g,15,y+2,2,1,P.trunkD); }
+      px(g,11,0,1,TS,P.line); px(g,20,0,1,TS,P.line);
+    } else if(bits<=2 && ew && !ns){
+      px(g,0,14,TS,4,SEASON[SE].grass); px(g,0,14,TS,1,SEASON[SE].grassL); px(g,0,17,TS,1,SEASON[SE].grassDk);
+      for(let x=2;x<TS;x+=7){ disc(g,x,16,1,SEASON[SE].treeD); px(g,x,17,1,2,P.trunkD); }
+      px(g,0,11,TS,1,P.line); px(g,0,20,TS,1,P.line);
+    } else {
+      // 路口：画车道分隔虚线
+      for(let k=1;k<TS;k+=6){ px(g,k,15,3,1,P.line); px(g,15,k,1,3,P.line); }
+    }
+    if(bits>=3){
+      if(mask&1) for(let x=AA+1;x<AB-2;x+=4) px(g,x,0,2,4,P.cross);
+      if(mask&4) for(let x=AA+1;x<AB-2;x+=4) px(g,x,TS-5,2,4,P.cross);
+      if(mask&8) for(let y=AA+1;y<AB-2;y+=4) px(g,0,y,4,2,P.cross);
+      if(mask&2) for(let y=AA+1;y<AB-2;y+=4) px(g,TS-5,y,4,2,P.cross);
+    }
+    const curb=(x,y,w,h)=>px(g,x,y,w,h,P.curb);
+    if(!(mask&1)) curb(AA,AA,AB-AA,1);
+    if(!(mask&4)) curb(AA,AB-1,AB-AA,1);
+    if(!(mask&8)) curb(AA,AA,1,AB-AA);
+    if(!(mask&2)) curb(AB-1,AA,1,AB-AA);
+  });
+}
+/* 地铁线：地面上只看得到一排检修井盖，走向清楚但不抢戏 */
+function subwaySprite(mask){
+  return sprite("sub"+mask, TS, TS, g => {
+    const dot=(x,y)=>{ px(g,x-2,y-2,5,5,"rgba(30,40,56,.34)"); px(g,x-1,y-1,3,3,"#4ac0a0"); };
+    if(mask&1) dot(16,5);
+    if(mask&4) dot(16,27);
+    if(mask&8) dot(5,16);
+    if(mask&2) dot(27,16);
+    dot(16,16);
+  });
+}
+function wireSprite(mask){
+  return sprite("wl"+mask+"_"+SE, TS, TS, g => {
+    g.drawImage(grassSprite(1),0,0);
+    const wire=(x,y,w,h)=>{ px(g,x,y,w,h,"#6e747e"); };
+    if(mask&1){ wire(14,0,1,16); wire(17,0,1,16); }
+    if(mask&4){ wire(14,16,1,16); wire(17,16,1,16); }
+    if(mask&8){ wire(0,14,16,1); wire(0,17,16,1); }
+    if(mask&2){ wire(16,14,16,1); wire(16,17,16,1); }
+    px(g,10,26,13,3,P.shadow);
+    // 铁塔
+    box(g,13,12,6,14,"#767d88","#949ba6","#565c66");
+    px(g,11,11,10,2,P.metal); px(g,12,10,8,1,P.metalD);
+    px(g,14,7,4,4,"#868d98"); px(g,13,6,6,1,P.metal);
+    px(g,15,3,2,4,"#868d98"); px(g,14,2,4,1,P.metalL);
+    px(g,13,24,2,5,"#5c626c"); px(g,17,24,2,5,"#5c626c");
+  });
+}
+function lotSprite(zone){
+  const col = zone===T.R ? "#63c46f" : zone===T.C ? "#5ba0dd" : "#dcbb52";
+  return sprite("lot"+zone+"_"+SE, TS, TS, g => {
+    const r = mulberry32(zone*913+7);
+    // 平整过的黄土地，比虚线框好看得多
+    px(g,0,0,TS,TS,P.dirt);
+    for(let k=0;k<6;k++) blob(g,(r()*TS)|0,(r()*TS)|0,4+((r()*4)|0), r()<.5?P.dirtD:"#c7a87a", r);
+    for(let k=0;k<30;k++) px(g,(r()*TS)|0,(r()*TS)|0,1,1, r()<.5?"#a88a5e":"#cbb086");
+    // 推平后的履带痕
+    for(let y=6;y<TS;y+=9) px(g,2,y,TS-4,1,P.dirtD);
+    if(SEASON[SE].snow){
+      for(let k=0;k<22;k++) px(g,(r()*TS)|0,(r()*TS)|0,3,2, r()<.6 ? "#eef4f8" : "#d6e2ea");
+    }
+    // 四角测量桩，颜色区分用途
+    for(const [sx,sy] of [[2,2],[TS-5,2],[2,TS-5],[TS-5,TS-5]]){
+      px(g,sx+1,sy+4,2,1,P.shadow);
+      px(g,sx+1,sy,1,5,"#8a6f4a");
+      px(g,sx,sy,3,2,col);
+    }
+    g.globalAlpha=.10; px(g,0,0,TS,TS,col); g.globalAlpha=1;
+  });
+}
+/* 高密度建筑脚下：不是整格水泥地，而是绿地 + 门前铺装 + 树池，
+   否则一整个街区会糊成一片停车场 */
+function baseSprite(d, v){
+  if(d < 2) return grassSprite(v%4);
+  return sprite("bs"+(v%8)+"_"+SE, TS, TS, g => {
+    const r = mulberry32(v*3571+91);
+    g.drawImage(grassSprite(v%4), 0, 0);
+    // 门前铺装
+    px(g,0,25,TS,7,P.lotPave);
+    px(g,0,25,TS,1,P.lotPaveL);
+    for(let k=0;k<TS;k+=7) px(g,k,25,1,7,P.lotPaveD);
+    // 侧边小径
+    px(g,26,0,6,26,P.lotPave); px(g,26,0,1,26,P.lotPaveL);
+    for(let k=0;k<26;k+=7) px(g,26,k,6,1,P.lotPaveD);
+    for(let k=0;k<16;k++) px(g,(r()*TS)|0, 25+((r()*7)|0),1,1, r()<.5?P.lotPaveL:P.lotPaveD);
+    // 树池
+    if(v % 3 !== 2){
+      const tx = 3 + ((r()*3)|0), ty = 27;
+      px(g,tx-1,ty+2,7,2,P.shadow);
+      px(g,tx-1,ty-1,7,6,P.dirtD);
+      px(g,tx+1,ty+1,2,3,P.trunkD);
+      const St = SEASON[SE];
+      disc(g,tx+2,ty-1,3,St.treeD); disc(g,tx+1,ty-2,3,St.tree); disc(g,tx+1,ty-2,1,St.treeL);
+    } else {
+      // 换成自行车架
+      px(g,4,28,1,4,P.metalD); px(g,8,28,1,4,P.metalD); px(g,4,28,5,1,P.metal);
+    }
+  });
+}
+function parkSprite(v){
+  v &= 7;
+  return sprite("pk"+v+"_"+SE, TS, TS, g => {
+    const r = mulberry32(v*7717+5);
+    g.drawImage(grassSprite((v+2)%4),0,0);
+    // 十字小径
+    px(g,0,13,TS,6,P.path); px(g,13,0,6,TS,P.path);
+    px(g,0,13,TS,1,P.pathD); px(g,0,18,TS,1,P.pathD);
+    px(g,13,0,1,TS,P.pathD); px(g,18,0,1,TS,P.pathD);
+    for(let k=0;k<14;k++) px(g,(r()*TS)|0, 14+((r()*4)|0),1,1,P.pathD);
+    // 四个角落：树、花坛、长椅
+    const corners = [[3,3],[22,3],[3,22],[22,22]];
+    for(let k=0;k<4;k++){
+      const [cx,cy] = corners[k];
+      const kind = (r()*3)|0;
+      if(kind===0){
+        const S2=SEASON[SE];
+        px(g,cx+1,cy+7,7,2,P.shadow);
+        px(g,cx+3,cy+5,2,4,P.trunkD);
+        if(S2.snow){
+          for(let m=0;m<4;m++){
+            const a3 = -Math.PI/2 + (m-1.5)*0.6;
+            for(let d3=1; d3<4; d3++)
+              px(g, cx+3+Math.round(Math.cos(a3)*d3), cy+4+Math.round(Math.sin(a3)*d3), 1, 1, S2.treeD);
+          }
+          px(g,cx+2,cy+1,4,1,"#f4f8fb");
+        } else {
+          disc(g,cx+4,cy+4,4,S2.treeD); disc(g,cx+3,cy+3,3,S2.tree); disc(g,cx+3,cy+3,2,S2.treeL);
+        }
+      } else if(kind===1){
+        px(g,cx,cy+6,8,2,P.shadow);
+        box(g,cx,cy,8,7,"#b08a5e","#c9a271","#8e6d47");
+        for(let m=0;m<7;m++)
+          px(g,cx+1+((r()*6)|0),cy+1+((r()*5)|0),1,1, ["#e8617a","#f2c94c","#f0f2f5","#a97bd8"][(r()*4)|0]);
+      } else {
+        px(g,cx,cy+5,8,2,P.shadow);
+        px(g,cx,cy+1,8,2,"#a37a4e"); px(g,cx,cy+1,8,1,"#c29564");
+        px(g,cx,cy+3,1,3,"#7d5c3a"); px(g,cx+7,cy+3,1,3,"#7d5c3a");
+      }
+    }
+    // 路灯
+    px(g,15,9,2,1,P.metalD); px(g,15,4,1,6,P.metalD); px(g,14,3,3,2,"#f5e6b0");
+  });
+}
+function rubbleSprite(v){
+  return sprite("rb"+(v%6), TS, TS, g => {
+    const r = mulberry32(v*3301+1);
+    px(g,0,0,TS,TS,P.ash);
+    for(let k=0;k<7;k++) blob(g,(r()*TS)|0,(r()*TS)|0,4+((r()*4)|0), r()<.5?P.rubbleD:"#5d564d", r);
+    // 断墙残骸
+    for(let k=0;k<9;k++){
+      const x=(r()*(TS-6))|0, y=(r()*(TS-5))|0, w=2+((r()*5)|0), h=2+((r()*4)|0);
+      box(g,x,y,w,h, r()<.4?P.rubble:P.rubbleD, "#9c9388", "#4b453e");
+    }
+    for(let k=0;k<26;k++) px(g,(r()*TS)|0,(r()*TS)|0,1,1, r()<.4?"#a39a8d":"#3f3a35");
+    // 焦黑痕
+    for(let k=0;k<4;k++) px(g,(r()*(TS-8))|0,(r()*(TS-3))|0,5+((r()*4)|0),2,"#332f2b");
+  });
+}
+function fireSprite(frame){
+  return sprite("fire"+frame, TS, TS, g => {
+    const r = mulberry32(frame*7919+3);
+    // 底部火床
+    for(let k=0;k<7;k++){
+      const x=4+((r()*22)|0), h=4+((r()*7)|0);
+      px(g,x,TS-4-h,3,h+4,P.fire[2]);
+    }
+    for(let k=0;k<6;k++){
+      const x=6+((r()*18)|0), h=3+((r()*6)|0);
+      px(g,x,TS-6-h,3,h+3,P.fire[1]);
+    }
+    for(let k=0;k<5;k++){
+      const x=8+((r()*14)|0), h=2+((r()*4)|0);
+      px(g,x,TS-9-h,2,h+2,P.fire[0]);
+    }
+    // 飞散的火星
+    for(let k=0;k<7;k++) px(g, 5+((r()*22)|0), 2+((r()*14)|0), 1,1, r()<.5?P.fire[0]:P.fire[1]);
+  });
+}
+function radSprite(){
+  return sprite("rad", TS, TS, g => {
+    g.globalAlpha=.5; px(g,0,0,TS,TS,"#8ce07a"); g.globalAlpha=1;
+    // 辐射标志
+    const cx=16, cy=17;
+    disc(g,cx,cy,3,"#243a20");
+    for(const a of [-Math.PI/2, Math.PI/6, Math.PI*5/6]){
+      for(let d=4; d<10; d++){
+        const w = 1 + ((d-3)>>1);
+        px(g, Math.round(cx+Math.cos(a)*d)-(w>>1), Math.round(cy+Math.sin(a)*d)-(w>>1), w, w, "#243a20");
+      }
+    }
+    disc(g,cx,cy,2,"#8ce07a");
+  });
+}
+
+/* ---- 住宅 ---- */
+function houseSprite(d, v, night){
+  v &= 15;                      // 收敛外观变体，控制精灵缓存规模
+  return sprite("h"+d+"_"+v+"_"+(night?1:0)+"_"+SE, TS, TS, g => {
+    g.drawImage(baseSprite(d,v),0,0);
+    const r = mulberry32(v*2654435761 + d*97);
+    const S = SKIN_R[(r()*SKIN_R.length)|0];
+    const [wall, wallL, wallD, roof, roofL, roofD] = S;
+    const lit = c => night ? (r()<.80 ? P.win : P.winOff) : c;
+
+    if(d === 1){
+      // 独栋：前院 + 车道 + 坡屋顶
+      px(g,13,24,7,8,P.path); px(g,13,24,1,8,P.pathD); px(g,19,24,1,8,P.pathD);
+      const Sy = SEASON[SE];
+      for(let k=0;k<3;k++){ px(g,5+k*8,26,3,3,Sy.treeD); px(g,5+k*8,26,2,2,Sy.tree); }
+      shad(g,4,7,25,19,3);
+      // 墙体
+      box(g,6,15,21,11,wall,wallL,wallD);
+      // 坡屋顶：上坡受光、下坡背光，屋脊高光
+      px(g,4,6,25,10,roof);
+      px(g,4,6,25,5,roofL);
+      px(g,4,10,25,1,"#ffffff"); g.globalAlpha=.20; px(g,4,10,25,1,"#ffffff"); g.globalAlpha=1;
+      px(g,4,15,25,1,roofD);
+      px(g,4,6,25,1,roofD); px(g,4,6,1,10,roofD); px(g,28,6,1,10,roofD);
+      // 烟囱
+      box(g,21,2,5,7,wallD,wall,"#6f5c46"); px(g,20,1,7,2,roofD);
+      // 门与窗
+      px(g,14,19,5,7,"#8a5f3c"); px(g,14,19,1,7,"#a67a52"); px(g,17,22,1,1,P.win);
+      px(g,13,26,7,1,P.concD);
+      px(g,8,19,5,4,lit(P.glass)); px(g,8,23,5,1,wallD); px(g,8,18,5,1,wallL);
+      px(g,20,19,5,4,lit(P.glass)); px(g,20,23,5,1,wallD); px(g,20,18,5,1,wallL);
+    } else if(d === 2){
+      // 多层公寓：檐口 + 阳台 + 屋顶设备
+      shad(g,3,5,27,24,3);
+      box(g,4,8,25,21,wall,wallL,wallD);
+      // 屋顶与女儿墙
+      px(g,3,5,27,4,roof); px(g,3,5,27,1,roofL); px(g,3,8,27,1,roofD);
+      px(g,6,2,6,4,roofD); px(g,6,2,6,1,P.metal);          // 楼梯间
+      px(g,20,3,5,3,P.metalD); px(g,20,3,5,1,P.metalL);    // 水箱
+      // 窗与窗台
+      for(let row=0; row<3; row++){
+        const wy = 12 + row*6;
+        for(let c=0; c<3; c++){
+          const wx = 6 + c*8;
+          px(g,wx,wy,6,4,lit(P.glass));
+          px(g,wx,wy-1,6,1,wallL); px(g,wx,wy+4,6,1,wallD);
+          px(g,wx+2,wy,1,4,wallD);                          // 竖框
+        }
+        // 阳台栏板
+        if(row === 1) for(let c=0;c<3;c++) px(g,5+c*8,wy+5,8,2,P.metalD);
+      }
+      // 底层门厅
+      px(g,13,24,7,5,P.glassDk); px(g,13,24,7,1,roofD); px(g,16,25,1,4,wall);
+      px(g,4,29,25,1,wallD);
+    } else {
+      // 高层塔楼：收分 + 竖向线条 + 屋顶天线
+      shad(g,4,4,25,27,3);
+      box(g,6,6,20,25,wall,wallL,wallD);
+      px(g,5,3,22,4,roof); px(g,5,3,22,1,roofL); px(g,5,6,22,1,roofD);
+      px(g,9,0,5,3,P.metalD); px(g,17,1,3,2,P.metalD);
+      px(g,15,-2,1,4,P.metal); px(g,15,-1,1,1,"#ff6a5a");
+      // 竖向窗带
+      for(let c=0;c<3;c++){
+        const wx = 8 + c*6;
+        px(g,wx,9,4,20,night ? P.winOff : P.glassD);
+        for(let row=0; row<5; row++) px(g,wx,10+row*4,4,3, lit(P.glass));
+        px(g,wx-1,9,1,20,wallD); px(g,wx+4,9,1,20,wallL);
+      }
+      // 玻璃反光
+      g.globalAlpha=.14; px(g,7,7,3,23,"#ffffff"); g.globalAlpha=1;
+      px(g,12,29,8,2,P.glassDk); px(g,6,30,20,1,wallD);
+    }
+  });
+}
+
+/* ---- 商业 ---- */
+function commSprite(d, v, night){
+  v &= 15;
+  return sprite("c"+d+"_"+v+"_"+(night?1:0)+"_"+SE, TS, TS, g => {
+    g.drawImage(baseSprite(d,v),0,0);
+    const r = mulberry32(v*40503 + d*331);
+    const S = SKIN_C[(r()*SKIN_C.length)|0];
+    const [wall, wallL, wallD, roof, roofL, roofD] = S;
+    const SIGN = ["#e8617a","#f2a54c","#4fc0a8","#6f8fe0","#d4699c"];
+    const sign = SIGN[(r()*SIGN.length)|0];
+    const lit = () => night ? (r()<.88 ? P.win : P.glassDk) : P.glass;
+
+    if(d === 1){
+      // 沿街店铺：条纹雨棚 + 橱窗 + 招牌 + 门口立牌
+      shad(g,3,9,27,18,3);
+      box(g,4,12,25,15,wall,wallL,wallD);
+      px(g,3,9,27,4,roof); px(g,3,9,27,1,roofL); px(g,3,12,27,1,roofD);
+      // 招牌
+      px(g,7,6,18,4,sign); px(g,7,6,18,1,"#ffffff");
+      g.globalAlpha=.25; px(g,7,6,18,1,"#ffffff"); g.globalAlpha=1;
+      for(let k=0;k<5;k++) px(g,9+k*4,7,2,2,"#ffffff");
+      // 雨棚条纹
+      for(let k=0;k<25;k+=4){ px(g,4+k,16,2,3,"#ffffff"); px(g,6+k,16,2,3,sign); }
+      px(g,4,19,25,1,P.shadowHard);
+      // 橱窗
+      px(g,6,21,9,6,lit()); px(g,6,21,9,1,wallD); px(g,6,27,9,1,wallD);
+      px(g,17,21,7,6,lit()); px(g,17,21,7,1,wallD);
+      px(g,25,21,3,6,"#8a5f3c");                       // 门
+      // 人行道立牌
+      px(g,8,29,4,3,"#7d5c3a"); px(g,8,29,4,1,sign);
+    } else if(d === 2){
+      // 办公楼：横向带窗 + 入口雨篷 + 屋顶空调
+      shad(g,3,5,27,25,3);
+      box(g,4,7,25,23,wall,wallL,wallD);
+      px(g,3,4,27,4,roof); px(g,3,4,27,1,roofL); px(g,3,7,27,1,roofD);
+      px(g,7,1,7,4,P.metalD); px(g,7,1,7,1,P.metalL);   // 屋顶机组
+      for(let k=0;k<3;k++) px(g,8+k*2,2,1,2,P.metal);
+      px(g,20,2,5,3,P.metalD); px(g,20,2,5,1,P.metalL);
+      // 横向带窗
+      for(let row=0; row<4; row++){
+        const wy = 10 + row*5;
+        px(g,6,wy,21,3,lit());
+        px(g,6,wy+3,21,1,wallD); px(g,6,wy-1,21,1,wallL);
+        for(let c=0;c<5;c++) px(g,9+c*4,wy,1,3,wallD);
+      }
+      // 入口
+      px(g,11,26,10,4,P.glassDk); px(g,10,25,12,2,sign);
+      px(g,15,26,1,4,wall); px(g,4,30,25,1,wallD);
+    } else {
+      // 摩天楼：收分体量 + 竖向幕墙 + 楼顶信号灯
+      shad(g,5,2,23,29,3);
+      box(g,6,8,21,23,wall,wallL,wallD);                 // 裙楼
+      box(g,9,1,15,9,wall,wallL,wallD);                  // 塔冠段
+      px(g,8,0,17,2,roof); px(g,8,0,17,1,roofL);
+      px(g,15,-4,2,5,P.metal); px(g,15,-4,2,1,"#ff5a4a");
+      // 幕墙：竖向玻璃带 + 竖框
+      for(let c=0;c<4;c++){
+        const wx = 8 + c*5;
+        px(g,wx,10,4,20,night ? P.winOff : P.glassD);
+        for(let row=0; row<7; row++) px(g,wx,11+row*3,4,2, lit());
+        px(g,wx+4,10,1,20,wallL);
+      }
+      for(let c=0;c<3;c++){
+        const wx = 11 + c*4;
+        px(g,wx,2,3,7,night ? P.winOff : P.glassD);
+        for(let row=0; row<3; row++) px(g,wx,3+row*2,3,1, lit());
+      }
+      // 大面积玻璃的斜向反光
+      g.globalAlpha=.13;
+      for(let k=0;k<7;k++) px(g,8+k, 10+k*2, 3, 4, "#ffffff");
+      g.globalAlpha=1;
+      px(g,12,28,9,3,P.glassDk); px(g,6,30,21,1,wallD);
+    }
+  });
+}
+
+/* ---- 工业 ---- */
+function indSprite(d, v, night){
+  v &= 15;
+  return sprite("i"+d+"_"+v+"_"+(night?1:0)+"_"+SE, TS, TS, g => {
+    g.drawImage(baseSprite(d,v),0,0);
+    const r = mulberry32(v*86028121 + d*17);
+    const S = SKIN_I[(r()*SKIN_I.length)|0];
+    const [wall, wallL, wallD, roof, roofL, roofD] = S;
+    const lit = c => night ? (r()<.7 ? P.winWarm : "#54503f") : c;
+
+    if(d === 1){
+      // 仓库：波纹屋顶 + 卷帘门 + 装卸平台
+      px(g,0,26,TS,6,"#8e8a7e"); px(g,0,26,TS,1,"#a5a194");   // 场地
+      shad(g,3,8,27,18,3);
+      box(g,4,11,25,15,wall,wallL,wallD);
+      px(g,3,8,27,4,roof); px(g,3,8,27,1,roofL); px(g,3,11,27,1,roofD);
+      for(let k=5;k<29;k+=3) px(g,k,8,1,4,roofD);              // 波纹
+      // 卷帘门
+      for(const dx of [6, 18]){
+        px(g,dx,16,8,10,"#cfd4d8");
+        for(let y=17;y<26;y+=2) px(g,dx,y,8,1,"#a8aeb4");
+        px(g,dx,15,8,1,P.metalD);
+      }
+      px(g,15,17,2,4,lit("#5d5847"));
+      px(g,4,26,25,1,"#6c685e");
+      // 货盘
+      px(g,25,27,5,3,"#a8813f"); px(g,25,27,5,1,"#c49a52");
+    } else if(d === 2){
+      // 厂房：锯齿天窗 + 烟囱 + 侧面管道
+      shad(g,3,7,27,20,3);
+      box(g,4,12,25,15,wall,wallL,wallD);
+      // 锯齿屋顶，天窗朝左上受光
+      for(let k=3;k<29;k+=6){
+        px(g,k,7,3,6,roofD);
+        px(g,k+3,7,3,6,roof);
+        px(g,k+3,7,3,1,roofL);
+        px(g,k,8,2,4, night ? "#3d4452" : "#bcd6e6");
+      }
+      px(g,3,12,27,1,roofD);
+      // 烟囱
+      box(g,21,0,6,13,"#8a8478","#a29c8f","#6b665b");
+      px(g,20,0,8,2,"#c96a5a"); px(g,20,3,8,1,"#c96a5a");
+      // 侧墙管道
+      px(g,4,15,25,2,P.metalD); px(g,4,15,25,1,P.metal);
+      for(let k=7;k<28;k+=7) px(g,k,17,2,3,P.metalD);
+      for(let c=0;c<4;c++) px(g,6+c*6,20,4,5, lit("#5d5847"));
+      px(g,4,27,25,1,"#6c685e");
+    } else {
+      // 重工业：储罐 + 管廊 + 双烟囱
+      shad(g,2,6,29,23,3);
+      box(g,3,11,27,18,wall,wallL,wallD);
+      px(g,2,8,29,4,roof); px(g,2,8,29,1,roofL); px(g,2,11,29,1,roofD);
+      // 烟囱
+      box(g,4,0,5,11,"#8a8478","#a29c8f","#6b665b"); px(g,3,0,7,2,"#c96a5a");
+      box(g,11,2,4,9,"#948e82","#aca698","#75705f"); px(g,10,2,6,2,"#c96a5a");
+      // 储罐
+      disc(g,24,7,5,"#6f6a5e"); disc(g,23,6,5,"#9c968a"); disc(g,22,5,3,"#bcb6a8");
+      px(g,19,7,11,1,P.metalD);
+      // 管廊
+      px(g,3,14,27,2,P.metalD); px(g,3,14,27,1,P.metal);
+      px(g,3,18,27,2,P.metalD); px(g,3,18,27,1,P.metal);
+      for(let k=6;k<29;k+=6) px(g,k,16,2,2,"#7d7770");
+      for(let c=0;c<5;c++) px(g,4+c*5,22,4,5, lit("#5d5847"));
+      px(g,3,29,27,1,"#6c685e");
+    }
+  });
+}
+
+/* ---- 多格建筑 ---- */
+/* 厂区地坪：混凝土 + 接缝 + 边缘围墙 */
+function yard(g, w, h, floor, floorL, edge){
+  px(g,0,0,w,h,floor);
+  const r = mulberry32(w*31+h);
+  for(let k=0;k<w;k+=12) px(g,k,0,1,h,floorL);
+  for(let k=0;k<h;k+=12) px(g,0,k,w,1,floorL);
+  for(let k=0;k<40;k++) px(g,(r()*w)|0,(r()*h)|0,1,1, r()<.5?floorL:edge);
+  px(g,0,0,w,2,floorL); px(g,0,h-3,w,3,edge);
+  px(g,0,0,2,h,floorL); px(g,w-2,0,2,h,edge);
+}
+function bldSprite(b, night, dead){
+  const d = BLD[b], w = d.w*TS, h = d.h*TS;
+  return sprite("B"+d.key+(night?1:0)+(dead?1:0)+"_"+SE, w, h, g => {
+    const on = !dead;
+    const lit  = () => on && night ? P.winWarm : "#54503f";
+    const lamp = c => on ? c : "#5e5a52";
+    const r = mulberry32(b*9176+5);
+
+    switch(d.key){
+      case "coal": {
+        yard(g, w, h, "#8e8779", "#a39c8c", "#6b655a");
+        // 主厂房
+        shad(g,8,30,52,50,4);
+        box(g,10,34,50,44,"#b8b0a0","#cfc8b8","#948d7e");
+        px(g,8,30,54,6,"#7f7a6e"); px(g,8,30,54,2,"#9b968a");
+        for(let y=42; y<72; y+=9) for(let x=16; x<56; x+=9){
+          px(g,x,y,6,6,lit()); px(g,x,y+6,6,1,"#948d7e"); px(g,x,y-1,6,1,"#cfc8b8");
+        }
+        // 冷却塔
+        shad(g,62,22,28,58,4);
+        px(g,64,26,26,10,"#c8c2b4"); px(g,64,24,26,3,"#ddd7c9");
+        box(g,67,34,20,42,"#b0aa9c","#c9c3b4","#8d877a");
+        for(let y=38;y<74;y+=6) px(g,67,y,20,1,"#9b9588");
+        px(g,64,76,26,6,"#7f7a6e");
+        if(on){ g.globalAlpha=.28; disc(g,77,18,11,"#f2f5f8"); disc(g,72,12,7,"#f2f5f8"); g.globalAlpha=1; }
+        // 烟囱
+        box(g,14,4,10,28,"#8f8879","#a8a191","#6f6a5e");
+        px(g,12,2,14,4,"#c96a5a"); px(g,12,9,14,2,"#c96a5a");
+        box(g,34,10,8,22,"#8f8879","#a8a191","#6f6a5e");
+        px(g,32,8,12,3,"#c96a5a");
+        if(on){ g.globalAlpha=.22; disc(g,19,0,9,"#b8bcc4"); g.globalAlpha=1; }
+        // 输出端子
+        px(g,6,84,84,8,"#6b655a"); px(g,6,84,84,2,"#847e72");
+        px(g,12,86,14,4,lamp("#f2d75e")); px(g,70,86,14,4,lamp("#f2d75e"));
+        break;
+      }
+      case "gas": {
+        yard(g, w, h, "#8a8a7c", "#9f9f90", "#67675c");
+        shad(g,8,34,44,46,4);
+        box(g,10,38,42,40,"#c4bcac","#dbd4c4","#a09889");
+        px(g,8,34,46,6,"#7c776b"); px(g,8,34,46,2,"#98938a");
+        for(let y=46; y<72; y+=9) for(let x=16; x<48; x+=9) px(g,x,y,6,6,lit());
+        // 球罐与立罐
+        for(const [cx,cy,rad] of [[68,30,13],[68,62,11]]){
+          px(g,cx-rad+4,cy+rad-2,rad*2-4,4,P.shadow);
+          disc(g,cx,cy,rad,"#8f897c");
+          disc(g,cx-2,cy-2,rad-1,"#cfc9bb");
+          disc(g,cx-3,cy-3,rad-5,"#e6e0d2");
+          px(g,cx-rad,cy,rad*2+1,1,"#7d786c");
+          px(g,cx-3,cy+rad-1,6,4,"#6f6a5e");
+        }
+        px(g,52,30,34,2,P.metalD); px(g,52,62,30,2,P.metalD);
+        // 烟囱
+        box(g,16,6,8,30,"#948d7e","#aca596","#736d61");
+        px(g,14,4,12,3,"#e0a24a");
+        px(g,6,84,84,7,"#67675c"); px(g,12,86,12,3,lamp("#f2d75e"));
+        break;
+      }
+      case "solar": {
+        px(g,0,0,w,h,"#7f8a6c"); px(g,0,0,w,2,"#95a07e"); px(g,0,h-3,w,3,"#616b50");
+        const rr = mulberry32(77);
+        for(let k=0;k<60;k++) px(g,(rr()*w)|0,(rr()*h)|0,1,1, rr()<.5?"#8d9878":"#6f7a5e");
+        // 光伏阵列：每块板带支架和投影
+        for(let ry=8; ry<h-22; ry+=26){
+          for(let rx=8; rx<w-22; rx+=26){
+            px(g,rx+3,ry+18,22,4,P.shadow);
+            box(g,rx,ry,24,18, on?"#2f5686":"#4a4f58", on?"#4a7ab0":"#5b6069", "#1f3c60");
+            for(let c=0;c<4;c++) px(g,rx+2+c*6,ry+2,4,14, on?"#5a9ede":"#565b64");
+            for(let c=0;c<4;c++) px(g,rx+2+c*6,ry+2,4,1, on?"#8fc4ee":"#666b74");
+            px(g,rx+1,ry+8,22,1,"#1f3c60");
+            px(g,rx+6,ry+18,3,5,"#6b6459"); px(g,rx+16,ry+18,3,5,"#6b6459");
+          }
+        }
+        // 逆变器房
+        shad(g,w-30,h-30,22,16,3);
+        box(g,w-32,h-28,22,16,"#c4bcac","#dbd4c4","#a09889");
+        px(g,w-28,h-22,6,6,lit());
+        px(g,6,h-12,w-12,8,"#616b50"); px(g,12,h-10,14,4,lamp("#f2d75e"));
+        px(g,w-30,h-10,14,4,lamp("#f2d75e"));
+        break;
+      }
+      case "nuke": {
+        yard(g, w, h, "#8d9382", "#a3a996", "#6a7060");
+        // 安全壳穹顶
+        const cx=36, cy=58;
+        px(g,cx-20,cy+18,42,6,P.shadow);
+        box(g,cx-20,cy-6,40,30,"#c2bcae","#dbd5c6","#9e988a");
+        disc(g,cx,cy-6,20,"#cfc9ba");
+        disc(g,cx-3,cy-9,17,"#e4dece");
+        disc(g,cx-5,cy-11,10,"#f2ede0");
+        px(g,cx-20,cy-6,40,1,"#9e988a");
+        for(let y=cy+2; y<cy+22; y+=8) for(let x=cx-15; x<cx+13; x+=8) px(g,x,y,6,5,lit());
+        px(g,cx-14,cy-2,8,4,lamp("#7ad86a")); px(g,cx+7,cy-2,8,4,lamp("#7ad86a"));
+        // 双曲冷却塔
+        for(const tx of [80, 104]){
+          px(g,tx-2,86,24,5,P.shadow);
+          px(g,tx,30,20,8,"#cfc9ba"); px(g,tx,28,20,3,"#e4dece");
+          for(let y=38; y<86; y++){
+            const t = (y-38)/48;
+            const inset = Math.round(Math.sin(t*Math.PI)*3.2);
+            px(g,tx+inset,y,20-inset*2,1, y%7<4 ? "#b6b0a2" : "#aaa496");
+          }
+          px(g,tx-1,84,22,6,"#7d7768");
+          if(on){ g.globalAlpha=.30; disc(g,tx+10,22,12,"#f2f5f8"); disc(g,tx+6,12,8,"#f2f5f8"); g.globalAlpha=1; }
+        }
+        px(g,8,h-16,w-16,10,"#6a7060"); px(g,8,h-16,w-16,2,"#828874");
+        px(g,16,h-13,18,5,lamp("#7ad86a")); px(g,w-36,h-13,18,5,lamp("#7ad86a"));
+        break;
+      }
+      case "pump": {
+        px(g,0,0,w,h,"#7d868c"); px(g,0,0,w,2,"#939ba1"); px(g,0,h-3,w,3,"#5f676c");
+        shad(g,6,14,44,28,3);
+        box(g,8,18,42,26,"#c0c8ce","#d9e0e5","#9ba3aa");
+        px(g,6,14,46,5,"#8b939a"); px(g,6,14,46,2,"#a5adb4");
+        for(let x=13; x<46; x+=10) px(g,x,24,7,7,lit());
+        // 取水管伸向水面
+        px(g,4,46,56,8,"#7b838a"); px(g,4,46,56,2,"#949ca3");
+        for(let x=8; x<56; x+=12) px(g,x,48,8,4, lamp("#4ec0e0"));
+        // 泵体
+        disc(g,44,10,7,"#6f777d"); disc(g,43,9,6,"#a8b0b6"); disc(g,43,9,3, lamp("#4ec0e0"));
+        px(g,14,4,10,12,"#8b939a"); px(g,14,4,10,2,"#a8b0b6");
+        px(g,16,7,6,4, lamp("#4ec0e0"));
+        break;
+      }
+      case "tower": {
+        for(let ty=0;ty<2;ty++) for(let tx=0;tx<2;tx++) g.drawImage(grassSprite((tx+ty*2)%4), tx*TS, ty*TS);
+        px(g,12,54,42,5,P.shadow);
+        const TK  = on ? "#7fd4e8" : "#8d959b";
+        const TKL = on ? "#b0ecf8" : "#a8b0b6";
+        const TKD = on ? "#4f9fb8" : "#6b737a";
+        // 支腿 + 斜撑 + 爬梯
+        for(const lx of [15, 46]){ px(g,lx,34,4,22,"#7b838a"); px(g,lx,34,1,22,"#98a0a6"); }
+        px(g,18,40,28,3,"#6f777d"); px(g,20,50,24,3,"#6f777d");
+        px(g,30,34,1,22,"#8b939a"); px(g,34,34,1,22,"#8b939a");
+        for(let y=36;y<56;y+=4) px(g,30,y,5,1,"#a5adb3");
+        // 罐体：上圆顶 + 柱身 + 下锥
+        for(let dy=-15; dy<=0; dy++){
+          const w = Math.floor(Math.sqrt(Math.max(0, 225 - dy*dy)));
+          px(g, 32-w, 17+dy, w*2+1, 1, TK);
+        }
+        px(g,17,17,31,13,TK);
+        for(let k=0;k<7;k++) px(g, 18+k*2, 30+k, 29-k*4, 1, TK);
+        // 明暗与高光
+        px(g,17,17,31,1,TKL);
+        px(g,17,29,31,1,TKD);
+        px(g,43,17,5,13,TKD);
+        g.globalAlpha=.34; px(g,21,6,7,22,"#ffffff"); g.globalAlpha=1;
+        px(g,17,2,31,1,TKD);
+        // 顶部检修口与避雷针
+        px(g,29,-1,6,4,"#7b838a"); px(g,29,-1,6,2,"#a5adb3");
+        px(g,31,-5,2,5,P.metalD);
+        break;
+      }
+      case "townhall": {
+        px(g,0,0,w,h,"#8f9a72"); px(g,0,0,w,2,"#a5b087"); px(g,0,h-3,w,3,"#727c5c");
+        // 前广场与花坛
+        px(g,6,66,84,24,"#d8cfb4"); px(g,6,66,84,1,"#e8e0c8");
+        for(let k=12;k<84;k+=12) px(g,k,66,1,24,"#c2b99e");
+        for(const fx of [16,72]){ px(g,fx,74,10,8,"#7fa85c"); px(g,fx,74,10,1,"#96bf70");
+          for(let m=0;m<6;m++) px(g,fx+1+((m*3)%8),75+((m*2)%6),2,2,["#e8617a","#f2c94c","#f0f2f5"][m%3]); }
+        shad(g,10,20,76,46,4);
+        box(g,12,26,72,40,"#e6d6ae","#f6ecd0","#c4b28c");
+        px(g,10,20,76,7,"#a8814c"); px(g,10,20,76,2,"#c49c62");
+        // 山花与柱廊
+        for(let k=0;k<11;k++) px(g,48-k*2, 12+k, 4+k*4, 2, "#c49c62");
+        px(g,34,8,28,5,"#e6d6ae"); px(g,34,8,28,2,"#f6ecd0");
+        for(let x=18;x<80;x+=9){ px(g,x,30,5,34,"#f2e8cc"); px(g,x,30,1,34,"#fdf7e4"); px(g,x+4,30,1,34,"#c4b28c"); }
+        px(g,14,60,68,4,"#c49c62"); px(g,14,28,68,2,"#c49c62");
+        // 大门与旗杆
+        px(g,42,44,12,22,"#9c7346"); px(g,44,46,8,20, on ? "#ffdc8a" : "#6f6559");
+        px(g,47,46,2,20,"#9c7346");
+        px(g,20,2,2,20,P.metalD); px(g,22,3,10,7, on ? "#c95a4a" : "#7d7770");
+        px(g,74,2,2,20,P.metalD); px(g,66,3,8,7, on ? "#4a7fc9" : "#7d7770");
+        break;
+      }
+      case "stadium": {
+        px(g,0,0,w,h,"#8f9a72"); px(g,0,0,w,2,"#a5b087"); px(g,0,h-3,w,3,"#727c5c");
+        px(g,4,4,120,88,"#c2c8b4");
+        // 外圈看台
+        shad(g,8,8,112,80,4);
+        box(g,10,10,108,76,"#b0b8c2","#ccd3db","#8f97a2");
+        for(let k=14;k<114;k+=8) px(g,k,10,1,76,"#98a0ab");
+        // 内圈观众席
+        box(g,22,20,84,56,"#8f97a4","#a8b0bc","#6f7783");
+        const rr = mulberry32(31);
+        for(let y=22;y<74;y+=3) for(let x=24;x<104;x+=3)
+          px(g,x,y,2,2, ["#c95a4a","#4a7fc9","#e0c04a","#e8eef4"][(rr()*4)|0]);
+        // 球场
+        px(g,34,28,60,40, on ? "#4f9c4a" : "#6b7266");
+        for(let k=34;k<94;k+=8){ px(g,k,28,4,40, on ? "#57a852" : "#727a6e"); }
+        px(g,34,28,60,1,"#eef2f5"); px(g,34,67,60,1,"#eef2f5");
+        px(g,34,28,1,40,"#eef2f5"); px(g,93,28,1,40,"#eef2f5");
+        px(g,63,28,1,40,"#eef2f5");
+        for(let dy=-5;dy<=5;dy++){ const ww=Math.floor(Math.sqrt(Math.max(0,25-dy*dy)));
+          px(g,64-ww,48+dy,1,1,"#eef2f5"); px(g,63+ww,48+dy,1,1,"#eef2f5"); }
+        // 照明塔
+        for(const [lx,ly] of [[14,14],[110,14],[14,78],[110,78]]){
+          px(g,lx,ly,4,4,"#6f7783");
+          px(g,lx-2,ly-3,8,4, on ? "#fff2c0" : "#7d848e");
+        }
+        break;
+      }
+      case "univ": {
+        px(g,0,0,w,h,"#7f9068"); px(g,0,0,w,2,"#95a67c"); px(g,0,h-3,w,3,"#657552");
+        // 中央草坪与步道
+        px(g,30,54,68,36,"#6faa46"); px(g,30,54,68,1,"#84be59");
+        px(g,60,54,8,36,"#ddcda6"); px(g,30,68,68,7,"#ddcda6");
+        for(let k=0;k<9;k++){ const tx=34+k*8, ty=k%2?80:58;
+          px(g,tx,ty+4,5,2,P.shadow); disc(g,tx+2,ty+1,3,SEASON[SE].treeD); disc(g,tx+1,ty,2,SEASON[SE].tree); }
+        // 主楼
+        shad(g,6,10,116,44,4);
+        box(g,8,16,114,38,"#c8a68a","#dfc0a6","#a68870");
+        px(g,6,10,118,7,"#8a5f46"); px(g,6,10,118,2,"#a87a5c");
+        for(let x=14;x<118;x+=10){ px(g,x,22,7,10, lit()); px(g,x,21,7,1,"#dfc0a6"); px(g,x,32,7,1,"#a68870"); }
+        for(let x=14;x<118;x+=10) px(g,x,38,7,10, lit());
+        // 钟塔与圆顶
+        shad(g,50,0,30,26,3);
+        box(g,52,6,26,20,"#d4b394","#e8ccb0","#ab8b70");
+        for(let dy=-11;dy<=0;dy++){ const ww=Math.floor(Math.sqrt(Math.max(0,121-dy*dy)));
+          px(g,65-ww,8+dy,ww*2+1,1, on ? "#5fa89c" : "#8d9590"); }
+        px(g,64,-6,2,6,P.metalD);
+        disc(g,65,17,5, on ? "#f6f2e2" : "#8d8778"); disc(g,65,17,4,"#d4b394");
+        px(g,64,13,2,5,"#4a4238"); px(g,65,17,4,2,"#4a4238");
+        break;
+      }
+      case "tvtower": {
+        px(g,0,0,w,h,"#8d939b"); px(g,0,0,w,2,"#a5abb3"); px(g,0,h-3,w,3,"#6f757c");
+        for(let k=0;k<w;k+=8) px(g,k,0,1,h,"#98a0a8");
+        px(g,14,50,38,6,P.shadow);
+        // 基座
+        box(g,18,44,28,12,"#b0b8c2","#ccd3db","#8f97a2");
+        // 塔身：上细下粗
+        for(let y=8; y<46; y++){
+          const t = (y-8)/38;
+          const ww = Math.round(4 + t*t*9);
+          px(g, 32-(ww>>1), y, ww, 1, y%4<2 ? "#c2c8d0" : "#aeb5bf");
+        }
+        // 观景舱
+        disc(g,32,20,9,"#8f97a2"); disc(g,31,19,8,"#d2d8df"); disc(g,31,19,5,"#eef2f6");
+        px(g,23,20,18,2, on ? "#4a86c8" : "#7d848e");
+        for(let k=0;k<7;k++) px(g,25+k*2,17,1,2, on ? P.win : "#6f757c");
+        // 天线
+        px(g,31,-8,2,16,P.metalD); px(g,30,-10,4,2, on ? "#ff5a4a" : "#7d848e");
+        px(g,28,4,8,1,P.metalD);
+        if(on){ px(g,31,-4,2,1,"#ff5a4a"); }
+        break;
+      }
+      case "metro": {
+        px(g,0,0,w,h,"#a8aeb6"); px(g,0,0,w,2,"#c2c8d0"); px(g,0,h-3,w,3,"#868d96");
+        for(let k=0;k<w;k+=8){ px(g,k,0,1,h,"#98a0a8"); }
+        // 站厅
+        shad(g,8,14,44,32,3);
+        box(g,10,18,42,28,"#4ac0a0","#6fd8bc","#2f9880");
+        px(g,8,14,46,5,"#2f9880"); px(g,8,14,46,2,"#5fd0b4");
+        // 下行楼梯
+        px(g,18,26,26,20,"#2b3038");
+        for(let y=28;y<46;y+=3){ px(g,18,y,26,2,"#4d545e"); px(g,18,y,26,1,"#666e79"); }
+        px(g,16,24,30,3,"#1f242b");
+        // 站名牌与灯箱
+        px(g,20,18,22,5, on ? "#f2f6f8" : "#8d959b");
+        px(g,24,20,3,2,"#2f9880"); px(g,30,20,10,2,"#4a525c");
+        px(g,10,50,42,6,"#8d959b"); px(g,10,50,42,1,"#b0b8c0");
+        px(g,14,52,7,3, lamp("#4ac0a0")); px(g,42,52,7,3, lamp("#4ac0a0"));
+        // 入口雨棚立柱
+        px(g,12,46,3,6,"#2f9880"); px(g,49,46,3,6,"#2f9880");
+        break;
+      }
+      case "police": {
+        px(g,0,0,w,h,"#767f92"); px(g,0,0,w,2,"#8d95a8"); px(g,0,h-3,w,3,"#5b6375");
+        shad(g,5,12,52,36,3);
+        box(g,7,16,50,32,"#93a2be","#b0bdd4","#7788a4");
+        px(g,5,12,54,5,"#5f6d88"); px(g,5,12,54,2,"#7c8aa5");
+        // 台阶与门廊
+        px(g,20,44,24,10,"#b6bfcd"); px(g,20,44,24,1,"#d2d9e3");
+        px(g,20,48,24,1,"#9aa3b2"); px(g,20,52,24,1,"#9aa3b2");
+        px(g,24,30,16,16, on ? "#3f5f9c" : "#4a5060");
+        px(g,26,32,12,12, on ? "#5c86d8" : "#565c6c");
+        px(g,30,35,5,5,"#dce6fb");                       // 警徽
+        px(g,22,26,20,4,"#5f6d88"); px(g,22,26,20,1,"#8d99b2");
+        // 侧窗
+        for(const sx of [10, 46]) for(let y=22; y<42; y+=8) px(g,sx,y,7,5,lit());
+        // 屋顶警灯
+        px(g,10,8,7,5, on ? "#4a6fd8" : "#5a5f6a");
+        px(g,47,8,7,5, on ? "#d84a4a" : "#5a5f6a");
+        px(g,26,6,12,6,"#5f6d88"); px(g,26,6,12,2,"#8d99b2");
+        break;
+      }
+      case "fire": {
+        px(g,0,0,w,h,"#8d7d78"); px(g,0,0,w,2,"#a3928c"); px(g,0,h-3,w,3,"#6e615d");
+        shad(g,5,12,52,38,3);
+        box(g,7,16,50,34,"#c25a4c","#d97a6a","#9a4438");
+        px(g,5,12,54,5,"#8c3f34"); px(g,5,12,54,2,"#b25a4c");
+        // 两扇车库门 + 门前坡道
+        for(const dx of [11, 34]){
+          px(g,dx,26,19,24,"#e2e6ea");
+          for(let y=28; y<50; y+=3) px(g,dx,y,19,1,"#bcc2c8");
+          px(g,dx,25,19,2,"#8c3f34"); px(g,dx+1,26,17,1,"#f2f5f8");
+        }
+        px(g,7,50,50,5,"#a8aeb4"); px(g,7,50,50,1,"#c8ced4");
+        // 二层窗
+        for(let x=12; x<52; x+=11) px(g,x,18,8,6,lit());
+        // 钟楼与警灯
+        px(g,26,2,12,14,"#a8493c"); px(g,26,2,12,2,"#c96a5a");
+        px(g,29,5,6,6, on ? "#ffdc8a" : "#6a5f5a");
+        px(g,30,6,4,4,"#8c3f34");
+        px(g,48,6,7,5, on ? "#ff5a4a" : "#6a5f5a");
+        break;
+      }
+      case "school": {
+        px(g,0,0,w,h,"#7f9068"); px(g,0,0,w,2,"#95a67c"); px(g,0,h-3,w,3,"#657552");
+        // 操场
+        px(g,4,46,88,14,"#c2a878"); px(g,4,46,88,1,"#d6bd8e");
+        disc(g,76,53,7,"#8fae6a"); disc(g,76,53,5,"#c2a878");
+        px(g,10,50,3,7,"#e2e6ea"); px(g,26,50,3,7,"#e2e6ea");
+        px(g,10,50,19,2,"#e2e6ea");
+        shad(g,4,10,86,36,4);
+        box(g,6,16,84,30,"#e2cf9e","#f2e4bc","#c2ac7c");
+        px(g,4,11,88,6,"#a8814c"); px(g,4,11,88,2,"#c49c62");
+        // 钟楼
+        shad(g,36,0,22,18,3);
+        box(g,38,2,20,16,"#e2cf9e","#f2e4bc","#c2ac7c");
+        px(g,36,0,24,4,"#a8814c"); px(g,36,0,24,1,"#c49c62");
+        disc(g,48,10,5, on ? "#f6f2e2" : "#8d8778"); disc(g,48,10,4,"#e2cf9e");
+        px(g,47,6,2,5,"#4a4238"); px(g,48,10,4,2,"#4a4238");
+        // 教室窗：成排大窗，是学校最强的辨识特征
+        for(let x=10; x<86; x+=11){
+          if(x > 34 && x < 58) continue;
+          px(g,x,22,8,10,lit());
+          px(g,x,21,8,1,"#f2e4bc"); px(g,x,32,8,1,"#c2ac7c");
+          px(g,x+4,22,1,10,"#c2ac7c");
+        }
+        // 大门与台阶
+        px(g,38,32,20,14,"#9c7346"); px(g,40,34,16,12, on ? "#ffdc8a" : "#6f6559");
+        px(g,47,34,2,12,"#9c7346");
+        px(g,36,44,24,4,"#c8cdd2"); px(g,36,44,24,1,"#dfe4e9");
+        break;
+      }
+    }
+  });
+}
+
+/* =======================================================================
+   4. 建筑放置与拆除
+   ======================================================================= */
+function neighborMask(x,y,pred){
+  let m=0;
+  if(inb(x,y-1)&&pred(idx(x,y-1))) m|=1;
+  if(inb(x+1,y)&&pred(idx(x+1,y))) m|=2;
+  if(inb(x,y+1)&&pred(idx(x,y+1))) m|=4;
+  if(inb(x-1,y)&&pred(idx(x-1,y))) m|=8;
+  return m;
+}
+const buildable = i => { const t = map.type[i]; return (t===T.LAND || t===T.TREE) && !map.park[i]; };
+const nearShore = (x,y,w,h) => {
+  for(let dy=-1;dy<=h;dy++) for(let dx=-1;dx<=w;dx++){
+    if(!inb(x+dx,y+dy)) continue;
+    if(map.type[idx(x+dx,y+dy)] === T.WATER) return true;
+  }
+  return false;
+};
+
+function placeBld(b, x, y){
+  const d = BLD[b];
+  for(let dy=0;dy<d.h;dy++) for(let dx=0;dx<d.w;dx++){
+    if(!inb(x+dx,y+dy) || !buildable(idx(x+dx,y+dy))) return false;
+  }
+  if(d.needShore && !nearShore(x,y,d.w,d.h)){
+    warnOnce("shore","抽水站必须建在水边","warn",200); return false;
+  }
+  if(d.unlock && game.peakPop < d.unlock){
+    warnOnce("lock"+d.key, `${d.name}需要人口达到 ${d.unlock.toLocaleString()} 才能解锁`, "warn", 200);
+    return false;
+  }
+  if(d.unique && game.buildings.some(r => r.b === b)){
+    warnOnce("uniq"+d.key, `${d.name}全城只能有一座`, "warn", 200);
+    return false;
+  }
+  if(d.needSubway){
+    let onLine = false;
+    for(let dy=-1;dy<=d.h;dy++) for(let dx=-1;dx<=d.w;dx++){
+      if(!inb(x+dx,y+dy)) continue;
+      if(map.subway[idx(x+dx,y+dy)]) onLine = true;
+    }
+    if(!onLine){ warnOnce("noline","地铁站必须建在地铁线上","warn",220); return false; }
+  }
+  if(game.money < d.cost) return noMoney();
+  game.money -= d.cost;
+  const a = idx(x,y);
+  for(let dy=0;dy<d.h;dy++) for(let dx=0;dx<d.w;dx++){
+    const j = idx(x+dx, y+dy);
+    map.type[j] = T.BLD; map.bld[j] = b+1; map.anchor[j] = a; map.density[j] = 0;
+  }
+  game.buildings.push({ i:a, x, y, b });
+  return true;
+}
+function removeBld(i){
+  const a = map.anchor[i];
+  if(a < 0) return;
+  const rec = game.buildings.find(v => v.i === a);
+  if(!rec) return;
+  const d = BLD[rec.b];
+  for(let dy=0;dy<d.h;dy++) for(let dx=0;dx<d.w;dx++){
+    const j = idx(rec.x+dx, rec.y+dy);
+    map.type[j] = T.LAND; map.bld[j] = 0; map.anchor[j] = -1; map.density[j] = 0; map.onFire[j] = 0;
+  }
+  game.buildings = game.buildings.filter(v => v.i !== a);
+}
+/* 灾难摧毁一格：整栋建筑一起变废墟 */
+function destroyTile(i, rubble=true){
+  const t = map.type[i];
+  if(t === T.WATER) return;
+  if(t === T.BLD){
+    const a = map.anchor[i];
+    const rec = game.buildings.find(v => v.i === a);
+    if(rec){
+      const d = BLD[rec.b];
+      removeBld(i);
+      if(rubble) for(let dy=0;dy<d.h;dy++) for(let dx=0;dx<d.w;dx++)
+        map.type[idx(rec.x+dx, rec.y+dy)] = T.RUBBLE;
+    }
+    return;
+  }
+  if(map.park[i]){ map.park[i] = 0; game.parks--; }
+  map.type[i] = rubble ? T.RUBBLE : T.LAND;
+  map.density[i] = 0; map.onFire[i] = 0; map.age[i] = 0; map.roadTier[i] = 0;
+}
+
+function noMoney(){ warnOnce("nomoney","资金不足","bad",240); return false; }
+
+function place(tool, x, y){
+  if(!inb(x,y)) return false;
+  const i = idx(x,y);
+  const t = map.type[i];
+
+  if(tool === "bulldoze"){
+    if(t === T.WATER) return false;
+    if(t === T.LAND && !map.park[i] && !map.subway[i]) return false;
+    if(game.money < COST.bulldoze) return noMoney();
+    game.money -= COST.bulldoze;
+    if(t === T.BLD){ removeBld(i); return true; }
+    if(map.park[i]){ map.park[i] = 0; game.parks--; }
+    if(t === T.LAND && map.subway[i]){ map.subway[i] = 0; return true; }   // 空地上推平 = 拆地铁线
+    map.type[i] = T.LAND; map.density[i] = 0; map.age[i] = 0; map.onFire[i] = 0; map.roadTier[i] = 0;
+    return true;
+  }
+
+  if(tool.startsWith("b:")) return placeBld(bldIdx[tool.slice(2)], x, y);
+
+  if(tool === "park"){
+    if(!buildable(i)) return false;
+    if(game.money < COST.park) return noMoney();
+    game.money -= COST.park;
+    map.type[i] = T.LAND; map.park[i] = 1; game.parks++;
+    map.scenic[i] = .45;
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]])
+      if(inb(x+dx,y+dy)){
+        const j = idx(x+dx,y+dy);
+        map.scenic[j] = Math.max(map.scenic[j], .26);
+      }
+    return true;
+  }
+
+  if(tool === "subway"){
+    if(map.subway[i]) return false;
+    if(t === T.WATER) return false;          // 过不了水，得绕
+    if(game.money < COST.subway) return noMoney();
+    game.money -= COST.subway; map.subway[i] = 1;
+    return true;
+  }
+  if(tool === "avenue"){
+    // 已有街道直接原地升级，省得先拆再修
+    if(t === T.ROAD && !map.roadTier[i]){
+      if(game.money < COST.avenue - COST.road) return noMoney();
+      game.money -= COST.avenue - COST.road; map.roadTier[i] = 1;
+      return true;
+    }
+    if(t === T.ROAD) return false;
+    if(!buildable(i)) return false;
+    if(game.money < COST.avenue) return noMoney();
+    game.money -= COST.avenue;
+    map.type[i] = T.ROAD; map.roadTier[i] = 1; map.density[i] = 0; map.age[i] = 0;
+    return true;
+  }
+
+  const tmap = { road:T.ROAD, wire:T.WIRE, zoneR:T.R, zoneC:T.C, zoneI:T.I };
+  const target = tmap[tool];
+  if(target === undefined) return false;
+  if(map.type[i] === target) return false;
+  if(!buildable(i)) return false;
+  const cost = target===T.ROAD ? COST.road : target===T.WIRE ? COST.wire : COST.zone;
+  if(game.money < cost) return noMoney();
+  game.money -= cost;
+  map.type[i] = target; map.density[i] = 0; map.age[i] = 0;
+  return true;
+}
+
+/* =======================================================================
+   5. 基础设施网络
+   ======================================================================= */
+const _seen = new Uint8Array(N);
+
+/* 道路可达性 */
+function updateRoadDist(){
+  map.roadDist.fill(255);
+  const q = [];
+  for(let i=0;i<N;i++) if(map.type[i]===T.ROAD){ map.roadDist[i]=0; q.push(i); }
+  for(let h=0; h<q.length; h++){
+    const i = q[h];
+    if(map.roadDist[i] >= 4) continue;
+    const x=i%W, y=(i/W)|0;
+    for(const [dx,dy] of DIR4){
+      const nx=x+dx, ny=y+dy;
+      if(!inb(nx,ny)) continue;
+      const j = idx(nx,ny);
+      if(map.type[j]===T.WATER) continue;
+      if(map.roadDist[j] > map.roadDist[i]+1){ map.roadDist[j] = map.roadDist[i]+1; q.push(j); }
+    }
+  }
+}
+
+/* 通用网络扩散：电与水共用。导体 = 道路 / 高压线 / 分区地块 / 建筑 */
+const conduct = i => {
+  const t = map.type[i];
+  return t===T.WIRE || t===T.ROAD || t===T.BLD || isZone(t);
+};
+function spreadNetwork(sources, capacity, demandOf, outArr){
+  outArr.fill(0);
+  if(capacity <= 0 || sources.length === 0) return 0;
+  _seen.fill(0);
+  const q = [];
+  for(const s of sources){ if(!_seen[s]){ _seen[s]=1; q.push(s); } }
+  for(let h=0; h<q.length; h++){
+    const i = q[h], x = i%W, y = (i/W)|0;
+    for(const [dx,dy] of DIR4){
+      const nx=x+dx, ny=y+dy;
+      if(!inb(nx,ny)) continue;
+      const j = idx(nx,ny);
+      if(_seen[j] || !conduct(j)) continue;
+      _seen[j] = 1; q.push(j);
+    }
+  }
+  // 按接入顺序分配，超出容量的部分供应不到
+  let load = 0;
+  for(const i of q){
+    const cost = demandOf(i);
+    if(load + cost > capacity) continue;
+    load += cost;
+    outArr[i] = 1;
+  }
+  return load;
+}
+
+function bldTiles(rec){
+  const d = BLD[rec.b], out = [];
+  for(let dy=0;dy<d.h;dy++) for(let dx=0;dx<d.w;dx++) out.push(idx(rec.x+dx, rec.y+dy));
+  return out;
+}
+
+function updatePower(){
+  const src = [];
+  let cap = 0;
+  for(const rec of game.buildings){
+    const d = BLD[rec.b];
+    if(!d.power) continue;
+    cap += d.power;
+    for(const j of bldTiles(rec)) src.push(j);
+  }
+  game.powerCap = cap;
+  game.powerLoad = spreadNetwork(src, cap, i => {
+    const t = map.type[i];
+    if(isZone(t)) return Math.max(1, map.density[i] * 3 * (game.season===3 ? 1.18 : 1));  // 冬季取暖
+    if(t === T.BLD){
+      const a = map.anchor[i];
+      const rec = game.buildings.find(v => v.i === a);
+      // 消耗只在锚点格计一次
+      return (rec && rec.i === i) ? (BLD[rec.b].pUse || 0) : 0;
+    }
+    return 0;
+  }, map.powered);
+}
+
+function updateWater(){
+  const src = [];
+  let cap = 0;
+  for(const rec of game.buildings){
+    const d = BLD[rec.b];
+    if(!d.water) continue;
+    if(!map.powered[rec.i]) continue;              // 水厂自己得先通电
+    cap += d.water;
+    for(const j of bldTiles(rec)) src.push(j);
+  }
+  game.waterCap = cap;
+  game.waterLoad = spreadNetwork(src, cap, i => {
+    const t = map.type[i];
+    if(isZone(t)) return Math.max(1, map.density[i] * 2 * (game.season===1 ? 1.16 : 1));  // 夏季用水
+    if(t === T.BLD){
+      const a = map.anchor[i];
+      const rec = game.buildings.find(v => v.i === a);
+      return (rec && rec.i === i) ? (BLD[rec.b].wUse || 0) : 0;
+    }
+    return 0;
+  }, map.watered);
+}
+
+/* 建筑是否在运转：通电 + 通路。
+   刻意不把「通水」当作运转条件——否则一断水就同时废掉消防和警力，
+   变成一环扣一环的死局，玩家根本看不出问题出在哪。
+   缺水的惩罚只体现在地块密度上限上。 */
+function bldActive(rec){
+  const d = BLD[rec.b];
+  if(d.power) return true;                          // 电厂无条件发电
+  if(!map.powered[rec.i]) return false;
+  if(map.roadDist[rec.i] > 3) return false;
+  return true;
+}
+
+/* 服务覆盖：半径衰减叠加 */
+function stampRadius(arr, cx, cy, r, strength){
+  const r2 = r*r;
+  for(let y=Math.max(0,cy-r); y<=Math.min(H-1,cy+r); y++){
+    for(let x=Math.max(0,cx-r); x<=Math.min(W-1,cx+r); x++){
+      const dd = (x-cx)*(x-cx) + (y-cy)*(y-cy);
+      if(dd > r2) continue;
+      const f = (1 - Math.sqrt(dd)/r) * strength;
+      const i = idx(x,y);
+      arr[i] = Math.min(1, arr[i] + f);
+    }
+  }
+}
+function updateCoverage(){
+  map.polCov.fill(0); map.fireCov.fill(0); map.edu.fill(0);
+  for(const rec of game.buildings){
+    const d = BLD[rec.b];
+    if(!d.kind) continue;
+    if(!bldActive(rec)) continue;
+    const cx = rec.x + (d.w>>1), cy = rec.y + (d.h>>1);
+    // 拨款比例直接乘在覆盖上：钱给少了，警力和消防的半径与强度同比缩水
+    const f = clamp(game.funding[d.kind] === undefined ? 1 : game.funding[d.kind], 0, 1.5);
+    const rad = Math.max(3, Math.round(d.radius * (0.55 + f*0.45)));
+    const str = clamp(f, 0, 1.15);
+    if(d.kind === "police") stampRadius(map.polCov,  cx, cy, rad, .95*str);
+    if(d.kind === "fire")   stampRadius(map.fireCov, cx, cy, rad, .95*str);
+    if(d.kind === "school") stampRadius(map.edu,     cx, cy, rad, .90*str);
+  }
+}
+
+/* =======================================================================
+   6. 交通：流量扩散模型
+   从岗位出发做路网 BFS 距离场，住宅沿梯度走通勤路径，累积每格载荷。
+   路径会自然汇聚到主干道，于是出现真实的瓶颈拥堵。
+   ======================================================================= */
+const jobDist = new Int32Array(N);
+/* 地铁网络。一条线只有同时接到「有人住的地方」和「有岗位的地方」才算通，
+   否则修了也白修——这一步算出哪些住宅地块真的能坐上地铁。 */
+const subComp = new Int32Array(N);
+function updateTransit(){
+  map.transit.fill(0);
+  game.transitRiders = 0;
+  game.metroLines = 0;
+  const stations = game.buildings.filter(r => BLD[r.b].kind === "metro" && bldActive(r));
+  game.metroStations = stations.length;
+  if(stations.length < 2) return;
+
+  // 地铁线连通分量
+  subComp.fill(-1);
+  let comp = 0;
+  for(let i=0;i<N;i++){
+    if(!map.subway[i] || subComp[i] >= 0) continue;
+    const q = [i]; subComp[i] = comp;
+    for(let h=0; h<q.length; h++){
+      const c = q[h], x=c%W, y=(c/W)|0;
+      for(const [dx,dy] of DIR4){
+        const nx=x+dx, ny=y+dy;
+        if(!inb(nx,ny)) continue;
+        const j = idx(nx,ny);
+        if(!map.subway[j] || subComp[j] >= 0) continue;
+        subComp[j] = comp; q.push(j);
+      }
+    }
+    comp++;
+  }
+  // 每个车站属于哪条线
+  const lineOf = new Map();
+  for(const st of stations){
+    const d = BLD[st.b];
+    let c = -1;
+    for(let dy=-1;dy<=d.h && c<0;dy++) for(let dx=-1;dx<=d.w && c<0;dx++){
+      if(!inb(st.x+dx,st.y+dy)) continue;
+      const j = idx(st.x+dx,st.y+dy);
+      if(map.subway[j]) c = subComp[j];
+    }
+    if(c >= 0) lineOf.set(st, c);
+  }
+  // 一条线上哪些车站旁边有住宅、哪些旁边有岗位
+  const hasHome = new Set(), hasJob = new Set();
+  const around = (st, pred) => {
+    const d = BLD[st.b], cx = st.x + (d.w>>1), cy = st.y + (d.h>>1);
+    for(let dy=-STATION_R; dy<=STATION_R; dy++) for(let dx=-STATION_R; dx<=STATION_R; dx++){
+      if(dx*dx+dy*dy > STATION_R*STATION_R) continue;
+      if(!inb(cx+dx,cy+dy)) continue;
+      if(pred(idx(cx+dx,cy+dy))) return true;
+    }
+    return false;
+  };
+  for(const [st,c] of lineOf){
+    if(around(st, j => map.type[j]===T.R && map.density[j]>0)) hasHome.add(c);
+    if(around(st, j => (map.type[j]===T.C||map.type[j]===T.I) && map.density[j]>0)) hasJob.add(c);
+  }
+  const live = new Set([...hasHome].filter(c => hasJob.has(c)));
+  game.metroLines = live.size;
+  if(!live.size) return;
+
+  // 通线上的车站，把接驳半径内的住宅标成「可坐地铁」
+  for(const [st,c] of lineOf){
+    if(!live.has(c)) continue;
+    const d = BLD[st.b], cx = st.x + (d.w>>1), cy = st.y + (d.h>>1);
+    for(let dy=-STATION_R; dy<=STATION_R; dy++) for(let dx=-STATION_R; dx<=STATION_R; dx++){
+      if(dx*dx+dy*dy > STATION_R*STATION_R) continue;
+      if(!inb(cx+dx,cy+dy)) continue;
+      const j = idx(cx+dx,cy+dy);
+      if(map.type[j]===T.R && map.density[j]>0) map.transit[j] = 1;
+    }
+  }
+}
+
+function updateTraffic(){
+  map.traffic.fill(0);
+  jobDist.fill(-1);
+
+  // 1) 岗位旁的道路作为汇点
+  const q = [];
+  for(let i=0;i<N;i++){
+    const t = map.type[i];
+    if((t!==T.C && t!==T.I) || map.density[i]===0) continue;
+    const x=i%W, y=(i/W)|0;
+    for(const [dx,dy] of DIR4){
+      if(!inb(x+dx,y+dy)) continue;
+      const j = idx(x+dx,y+dy);
+      if(map.type[j]===T.ROAD && jobDist[j]<0){ jobDist[j]=0; q.push(j); }
+    }
+  }
+  if(q.length === 0){ game.avgTraffic = 0; return; }
+
+  for(let h=0; h<q.length; h++){
+    const i = q[h], x=i%W, y=(i/W)|0;
+    for(const [dx,dy] of DIR4){
+      const nx=x+dx, ny=y+dy;
+      if(!inb(nx,ny)) continue;
+      const j = idx(nx,ny);
+      if(map.type[j]!==T.ROAD || jobDist[j]>=0) continue;
+      jobDist[j] = jobDist[i]+1; q.push(j);
+    }
+  }
+
+  // 2) 每块住宅把通勤量沿梯度送到岗位
+  let total = 0;
+  for(let i=0;i<N;i++){
+    if(map.type[i]!==T.R || map.density[i]===0) continue;
+    let trips = CAP[T.R][map.density[i]] * 0.42;
+    // 能坐地铁的那部分通勤直接不上路——这是地铁缓解拥堵的唯一机制
+    if(map.transit[i]){
+      game.transitRiders += trips * TRANSIT_SHARE;
+      trips *= (1 - TRANSIT_SHARE);
+    }
+    const entry = roadEntry(i);
+    if(entry < 0) continue;
+    let cur = entry;
+    if(jobDist[cur] < 0) continue;
+
+    // 沿 jobDist 下坡走到岗位
+    let steps = 0;
+    while(jobDist[cur] > 0 && steps++ < 90){
+      map.traffic[cur] += trips;
+      total += trips;
+      const x=cur%W, y=(cur/W)|0;
+      let nxt = -1, nd = jobDist[cur];
+      for(const [dx,dy] of DIR4){
+        const ax=x+dx, ay=y+dy;
+        if(!inb(ax,ay)) continue;
+        const j = idx(ax,ay);
+        if(map.type[j]===T.ROAD && jobDist[j]>=0 && jobDist[j]<nd){ nd=jobDist[j]; nxt=j; }
+      }
+      if(nxt < 0) break;
+      cur = nxt;
+    }
+    map.traffic[cur] += trips;
+  }
+
+  let roads = 0, sum = 0;
+  for(let i=0;i<N;i++) if(map.type[i]===T.ROAD){ roads++; sum += map.traffic[i]/capOf(i); }
+  game.avgTraffic = roads ? sum/roads : 0;
+}
+const congestOf = i => clamp(map.traffic[i] / capOf(i), 0, 3);
+
+/* 从任意地块沿 roadDist 下坡走到最近的道路，找不到返回 -1 */
+function roadEntry(i){
+  let cx = i%W, cy = (i/W)|0, guard = 0;
+  while(map.type[idx(cx,cy)] !== T.ROAD && guard++ < 6){
+    const cd = map.roadDist[idx(cx,cy)];
+    if(cd === 255) return -1;
+    let best = -1, bx=cx, by=cy;
+    for(const [dx,dy] of DIR4){
+      const nx=cx+dx, ny=cy+dy;
+      if(!inb(nx,ny)) continue;
+      const nd = map.roadDist[idx(nx,ny)];
+      if(nd < cd && (best<0 || nd<best)){ best=nd; bx=nx; by=ny; }
+    }
+    if(best < 0) return -1;
+    cx=bx; cy=by;
+  }
+  const e = idx(cx,cy);
+  return map.type[e] === T.ROAD ? e : -1;
+}
+
+/* 某地块附近的路况，用来影响地价和商业 */
+function localCongestion(x,y){
+  let best = 0;
+  for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){
+    if(!inb(x+dx,y+dy)) continue;
+    const j = idx(x+dx,y+dy);
+    if(map.type[j]===T.ROAD) best = Math.max(best, congestOf(j));
+  }
+  return best;
+}
+
+/* =======================================================================
+   7. 犯罪、污染、地价
+   ======================================================================= */
+function updateCrime(){
+  let sum = 0, n = 0;
+  for(let i=0;i<N;i++){
+    const t = map.type[i];
+    if(!isZone(t) || map.density[i]===0){ map.crime[i] = 0; continue; }
+    // 密集 + 低地价 + 缺教育 → 犯罪高发
+    const raw = map.density[i] * 0.20 * (1.15 - map.landval[i]) * (1.25 - map.edu[i]*0.5);
+    map.crime[i] = clamp(raw * (1 - map.polCov[i] * 0.88), 0, 1);
+    sum += map.crime[i]; n++;
+  }
+  game.avgCrime = n ? sum/n : 0;
+}
+
+function updatePollution(){
+  const src = new Float32Array(N);
+  for(let i=0;i<N;i++){
+    const t = map.type[i];
+    if(t===T.I)          src[i] = map.density[i] * 0.30;
+    else if(t===T.BLD){
+      const a = map.anchor[i];
+      const rec = game.buildings.find(v => v.i === a);
+      if(rec) src[i] = BLD[rec.b].pollute || 0;
+    }
+    else if(t===T.ROAD)  src[i] = 0.015 + congestOf(i) * 0.10;   // 拥堵尾气
+    else if(t===T.TREE)  src[i] = -0.06;
+    else if(map.park[i]) src[i] = -0.05;
+    if(map.onFire[i])    src[i] += 0.5;
+  }
+  let a = src, b = new Float32Array(N);
+  for(let pass=0; pass<2; pass++){
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+      let s=0, n=0;
+      for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+        const nx=x+dx, ny=y+dy;
+        if(!inb(nx,ny)) continue;
+        s += a[idx(nx,ny)]; n++;
+      }
+      b[idx(x,y)] = s/n;
+    }
+    const t=a; a=b; b=t;
+  }
+  for(let i=0;i<N;i++) map.pollution[i] = clamp(a[i]*2.4, 0, 1);
+}
+
+function updateLandValue(){
+  let cx=0, cy=0, tot=0;
+  for(let i=0;i<N;i++){
+    if(isZone(map.type[i]) && map.density[i]>0){
+      const w = map.density[i]; cx += (i%W)*w; cy += ((i/W)|0)*w; tot += w;
+    }
+  }
+  if(tot>0){ cx/=tot; cy/=tot; } else { cx=W/2; cy=H/2; }
+
+  for(let i=0;i<N;i++){
+    const x=i%W, y=(i/W)|0;
+    const d = Math.hypot(x-cx, y-cy);
+    let v = 0.30;
+    v += map.scenic[i];
+    v += clamp(1 - d/26, 0, 1) * 0.28;
+    v += map.roadDist[i] <= 2 ? 0.10 : (map.roadDist[i]===255 ? -0.18 : 0);
+    v += map.edu[i] * 0.22;
+    if(game.landmarks.townhall) v += 0.08;
+    v -= map.pollution[i] * 0.58;
+    v -= map.crime[i] * 0.50;
+    v -= localCongestion(x,y) * 0.13;
+    v -= map.radiation[i] * 0.95;
+    const zt = map.type[i]===T.C ? game.tax.C : map.type[i]===T.I ? game.tax.I : game.tax.R;
+    v -= zt > 9 ? (zt-9)*0.012 : 0;
+    map.landval[i] = clamp(v, 0, 1);
+  }
+}
+
+/* =======================================================================
+   8. 火灾与灾难
+   ======================================================================= */
+const flammable = i => {
+  const t = map.type[i];
+  return t===T.TREE || (isZone(t) && map.density[i]>0) || t===T.BLD;
+};
+function ignite(i){
+  if(!inb(i%W,(i/W)|0)) return;
+  if(!flammable(i) || map.onFire[i]) return;
+  map.onFire[i] = 1;
+}
+function updateFire(){
+  let count = 0;
+  for(let i=0;i<N;i++){
+    if(!map.onFire[i]) continue;
+    count++;
+    const x=i%W, y=(i/W)|0;
+    // 消防覆盖越好，扑灭越快
+    const wetBonus = isWet() ? 0.06 * game.wIntensity : isSnow() ? 0.03 : 0;
+    const putOut = 0.030 + map.fireCov[i] * 0.09 + (map.watered[i] ? 0.02 : 0)
+                 + truckBoost(i) + wetBonus;
+    if(Math.random() < putOut){ map.onFire[i] = 0; continue; }
+    map.onFire[i] = Math.min(255, map.onFire[i] + 1);
+    if(map.onFire[i] > 11){ destroyTile(i); continue; }
+    // 蔓延。这个系数极度敏感：0.10 会让 R0 到 6 左右，一把火烧掉整座城；
+    // 0.018 时无消防 R0≈0.79，一场火平均烧掉 5 格左右会自行熄灭——是个需要善后的事件，
+    // 而不是一场必然吞掉整座城的灾难；有消防覆盖则基本一格就摁住。
+    const spread = 0.018 * (1 - map.fireCov[i] * 0.75) * (isWet() ? 0.45 : 1);
+    for(const [dx,dy] of DIR4){
+      if(!inb(x+dx,y+dy)) continue;
+      if(Math.random() < spread) ignite(idx(x+dx,y+dy));
+    }
+  }
+  game.fires = count;
+}
+
+const DISASTERS = {
+  fire: { name:"火灾", run(){
+    const built = [], wild = [];
+    for(let i=0;i<N;i++){
+      if(!flammable(i) || map.onFire[i]) continue;
+      (map.type[i] === T.TREE ? wild : built).push(i);
+    }
+    // 地图上树远多于建筑，纯随机取的话几乎全是烧不到城的野火，消防站就白建了
+    const cands = (built.length && Math.random() < 0.82) ? built : (wild.length ? wild : built);
+    if(!cands.length) return false;
+    ignite(cands[(Math.random()*cands.length)|0]);
+    log("城里起火了！消防队覆盖不到的地方会烧成一片", "bad");
+    return true;
+  }},
+  quake: { name:"地震", run(){
+    const n = 5 + ((Math.random()*4)|0);
+    for(let k=0;k<n;k++){
+      const cx = (Math.random()*W)|0, cy = (Math.random()*H)|0, r = 2 + ((Math.random()*3)|0);
+      for(let dy=-r;dy<=r;dy++) for(let dx=-r;dx<=r;dx++){
+        if(!inb(cx+dx,cy+dy)) continue;
+        if(dx*dx+dy*dy > r*r) continue;
+        const i = idx(cx+dx,cy+dy);
+        if(Math.random() < 0.55) destroyTile(i);
+        else if(Math.random() < 0.20) ignite(i);
+      }
+    }
+    log("地震！大片建筑倒塌，注意随之而来的火情", "bad");
+    return true;
+  }},
+  tornado: { name:"龙卷风", run(){
+    // 从边缘生成，但速度必须指向地图内部，否则它会立刻飘出去、什么都没碰到
+    const edge = (Math.random()*4)|0;
+    const drift = () => (Math.random()-.5)*1.1;
+    const push  = () => 0.55 + Math.random()*0.75;
+    let s;
+    if(edge===0)      s = { x:0,     y:Math.random()*H, vx: push(),  vy: drift() };
+    else if(edge===1) s = { x:W-1,   y:Math.random()*H, vx:-push(),  vy: drift() };
+    else if(edge===2) s = { x:Math.random()*W, y:0,     vx: drift(), vy: push()  };
+    else              s = { x:Math.random()*W, y:H-1,   vx: drift(), vy:-push()  };
+    s.life = 150;
+    game.tornado = s;
+    log("龙卷风逼近！它会一路犁过城市", "bad");
+    return true;
+  }},
+  meltdown: { name:"核泄漏", run(){
+    const nukes = game.buildings.filter(r => BLD[r.b].melt);
+    if(!nukes.length){ log("没有核电站可以熔毁", "warn"); return false; }
+    meltdown(nukes[(Math.random()*nukes.length)|0]);
+    return true;
+  }},
+};
+
+function meltdown(rec){
+  const d = BLD[rec.b];
+  const cx = rec.x + (d.w>>1), cy = rec.y + (d.h>>1);
+  for(const j of bldTiles(rec)) destroyTile(j);
+  const R = 9;
+  for(let dy=-R;dy<=R;dy++) for(let dx=-R;dx<=R;dx++){
+    if(!inb(cx+dx,cy+dy)) continue;
+    const dd = Math.hypot(dx,dy);
+    if(dd > R) continue;
+    const i = idx(cx+dx,cy+dy);
+    map.radiation[i] = Math.max(map.radiation[i], (1 - dd/R) * 0.95);
+    if(dd < 4 && Math.random() < 0.5) destroyTile(i);
+    else if(dd < 7 && Math.random() < 0.12) ignite(i);
+  }
+  log("核电站熔毁！辐射区几十年内无法重建", "bad");
+}
+
+function updateTornado(){
+  const s = game.tornado;
+  if(!s) return;
+  s.x += s.vx; s.y += s.vy; s.life--;
+  s.vx += (Math.random()-.5)*0.22; s.vy += (Math.random()-.5)*0.22;
+  s.vx = clamp(s.vx,-1.4,1.4); s.vy = clamp(s.vy,-1.4,1.4);
+  const cx = Math.round(s.x), cy = Math.round(s.y);
+  // 0.62 时一次龙卷风平均犁掉 130 格（半座城），太狠了；0.38 大约 70~90 格
+  for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+    if(!inb(cx+dx,cy+dy)) continue;
+    const i = idx(cx+dx,cy+dy);
+    if(Math.random() < 0.38) destroyTile(i);
+  }
+  // 出界判定留 6 格余量，且必须已经活过一阵子，避免刚在边缘生成就被判出界
+  const out = cx < -6 || cy < -6 || cx > W+6 || cy > H+6;
+  if(s.life <= 0 || (out && s.life < 140)){
+    game.tornado = null;
+    log("龙卷风散了", "warn");
+  }
+}
+
+function maybeDisaster(){
+  if(!game.disastersOn) return;
+  const totalPop = game.pop.R + game.pop.C + game.pop.I;
+  if(totalPop < 400) return;                     // 小城给个宽限期
+  // 核电站超载有额外熔毁风险
+  for(const rec of game.buildings){
+    if(!BLD[rec.b].melt) continue;
+    if(game.powerCap > 0 && game.powerLoad > game.powerCap * 0.97 && Math.random() < 0.0016){
+      meltdown(rec); return;
+    }
+  }
+  if(Math.random() > 0.0022) return;
+  const keys = ["fire","fire","fire","quake","tornado"];
+  DISASTERS[keys[(Math.random()*keys.length)|0]].run();
+}
+
+/* =======================================================================
+   9. 增长、需求、财政
+   ======================================================================= */
+function updateGrowth(){
+  const pop = { R:0, C:0, I:0 };
+  // 这些均值一律按「已建成的地块」统计，而不是整张 64x64 地图。
+  // 按全图平均的话，紧凑城市哪怕服务全覆盖，指标也永远接近 0，需求模型会完全读错城市状态。
+  let eduSum = 0, polSum = 0, devN = 0;
+  for(let i=0;i<N;i++){
+    const t = map.type[i];
+    if(!isZone(t)) continue;
+    const key = t===T.R ? "R" : t===T.C ? "C" : "I";
+    const d  = map.density[i];
+    const lv = map.landval[i];
+    const x = i%W, y = (i/W)|0;
+    const ok = map.powered[i] && map.roadDist[i] <= 3 && !map.onFire[i] && map.radiation[i] < 0.12;
+
+    if(!ok){
+      if(d>0 && Math.random() < 0.05){ map.density[i] = d-1; map.age[i] = 0; }
+    } else {
+      const dem = game.demand[key];
+      let maxD = t===T.I ? (lv>0.52?3:lv>0.28?2:1)
+                         : (lv>0.66?3:lv>0.42?2:1);
+      if(!map.watered[i])          maxD = Math.min(maxD, 1);   // 没自来水盖不了高层
+      if(map.crime[i] > 0.45)      maxD = Math.min(maxD, 1);
+      else if(map.crime[i] > 0.25) maxD = Math.min(maxD, 2);
+      if(t===T.C && map.edu[i] > 0.5) maxD = Math.min(3, maxD+1);   // 教育带来高端服务业
+      if(t===T.C && localCongestion(x,y) > 1.5) maxD = Math.min(maxD, 2);
+
+      const settled = map.age[i] > 16 + d*14;
+      if(d < maxD && dem > 0.012 && settled){
+        const rate = [1, .55, .25][d];
+        const chance = (0.010 + dem*0.045 + lv*0.020) * rate;
+        if(Math.random() < chance){ map.density[i] = d+1; map.age[i] = 0; }
+      } else if(d > maxD && d > 0){
+        if(Math.random() < 0.012){ map.density[i] = d-1; map.age[i] = 0; }
+      } else if(dem < -0.28 && d > 0){
+        if(Math.random() < 0.008 + (-dem)*0.014){ map.density[i] = d-1; map.age[i] = 0; }
+      }
+    }
+    pop[key] += CAP[t][map.density[i]];
+    map.age[i] = Math.min(65535, map.age[i]+1);
+    if(map.density[i] > 0){ eduSum += map.edu[i]; polSum += map.pollution[i]; devN++; }
+  }
+  game.pop = pop;
+  game.avgEdu = devN ? eduSum/devN : 0;
+  game.avgPol = devN ? polSum/devN : 0;
+  const total = pop.R + pop.C + pop.I;
+  game.peakPop = Math.max(game.peakPop, total);      // 解锁看历史峰值，城市萎缩不会把地标锁回去
+  game.landmarks = {};
+  for(const rec of game.buildings){
+    const d = BLD[rec.b];
+    if(d.unique && bldActive(rec)) game.landmarks[d.key] = true;
+  }
+  // 大学把全市教育水平托底
+  if(game.landmarks.univ) game.avgEdu = Math.min(1, game.avgEdu + 0.18);
+}
+
+const avgTax = () => (game.tax.R + game.tax.C + game.tax.I) / 3;
+
+/* 市长评分 0~100。各项都是「越低越好」的负面指标取反，
+   加上就业平衡和财政健康，最后按权重合成。 */
+function updateRating(){
+  const pop = game.pop.R + game.pop.C + game.pop.I;
+  if(pop < 50){ game.rating = 50; return; }
+  const jobs = game.pop.C + game.pop.I;
+  const balance = 1 - Math.min(1, Math.abs(jobs*1.55 - game.pop.R) / Math.max(400, game.pop.R));
+  const safety  = 1 - clamp(game.avgCrime / 0.45, 0, 1);
+  const clean   = 1 - clamp(game.avgPol / 0.55, 0, 1);
+  const flow    = 1 - clamp((game.avgTraffic - 0.3) / 1.4, 0, 1);
+  const edu     = clamp(game.avgEdu / 0.75, 0, 1);
+  const fiscal  = clamp(0.5 + (game.lastIncome - game.lastExpense) / Math.max(400, game.lastIncome), 0, 1);
+  const growth  = clamp(0.35 + (game.demand.R + game.demand.C + game.demand.I) * 0.6, 0, 1);
+  const score = balance*0.16 + safety*0.18 + clean*0.14 + flow*0.14
+              + edu*0.16 + fiscal*0.12 + growth*0.10;
+  game.rating += (score*100 - game.rating) * 0.08;    // 平滑，避免评分乱跳
+  game.ratingParts = { balance, safety, clean, flow, edu, fiscal, growth };
+}
+const BOND = { amount: 12000, months: 120, monthly: 138 };
+function issueBond(){
+  if(game.bonds.length >= 4){ log("最多同时持有 4 笔市政债", "warn"); return; }
+  game.bonds.push({ left: BOND.months, monthly: BOND.monthly });
+  game.money += BOND.amount;
+  log(`发行市政债 +${fmtMoney(BOND.amount)}，此后每月还 ${fmtMoney(BOND.monthly)}，共 ${BOND.months} 个月`, "warn");
+  updateHUD();
+}
+
+function updateDemand(){
+  const {R,C,I} = game.pop;
+  const jobs = C + I;
+  let rd = (jobs*1.55 + 90 - R) / Math.max(220, R*0.85);
+  let cd = (R*0.34 + 12 - C) / Math.max(120, C*1.1);
+  let id = (R*0.42 + 40 - I) / Math.max(150, I*1.05);
+
+  // 外部迁入压力。没有这一项的话，住宅和岗位会互相锁死在一个平衡点上，
+  // 需求收敛到 0，城市在还剩大片空地时就永远停止生长。
+  // 把它挂在「城市办得好不好」上，教育、治安、环境、路况才真正成为长线增长的抓手。
+  const quality = clamp(0.45 + game.avgEdu*0.70 - game.avgPol*0.70 - game.avgCrime*1.10
+                       - clamp(game.avgTraffic-0.8, 0, 2)*0.30
+                       - Math.max(0, avgTax()-7)*0.030, 0, 1);
+  rd += quality*0.22; cd += quality*0.16; id += quality*0.14;
+  // 地标增益
+  if(game.landmarks.stadium){ rd += 0.10; cd += 0.09; id += 0.05; }
+  if(game.landmarks.univ){    rd += 0.06; cd += 0.11; }
+  if(game.landmarks.tvtower){ cd += 0.16; id += 0.06; }
+
+  rd -= (game.tax.R - 7) * 0.055;
+  cd -= (game.tax.C - 7) * 0.066;
+  id -= (game.tax.I - 7) * 0.061;
+  rd -= game.avgPol*0.55;   cd -= game.avgPol*0.30;
+  rd -= game.avgCrime*0.70; cd -= game.avgCrime*0.45;
+  cd -= clamp(game.avgTraffic-0.7, 0, 2) * 0.30;
+  id -= clamp(game.avgTraffic-0.9, 0, 2) * 0.22;
+  rd += game.avgEdu*0.25;   cd += game.avgEdu*0.20;
+  // 信心惩罚看的是「这个月还在不在亏」，而不是历史欠了多少钱。
+  // 早先按累计债务惩罚，结果是个无法脱身的死亡螺旋：欠得越多需求越低、
+  // 需求越低越还不上——实测提税、砍拨款、拆路、发债，没有一种手段能救回来。
+  // 改成盯当月收支后，玩家只要把预算压平就能立刻止血，然后靠增长还债。
+  const deficit = game.lastExpense - game.lastIncome;
+  if(deficit > 0 && game.money < 0){
+    const sev = clamp(deficit / Math.max(300, game.lastIncome), 0, 1) * 0.22;
+    rd -= sev; cd -= sev; id -= sev;
+  }
+
+  const sm = (cur, tgt) => cur + (clamp(tgt,-1,1) - cur) * 0.10;
+  game.demand.R = sm(game.demand.R, rd);
+  game.demand.C = sm(game.demand.C, cd);
+  game.demand.I = sm(game.demand.I, id);
+}
+
+function monthlyBudget(){
+  const totalPop = game.pop.R + game.pop.C + game.pop.I;
+  // 系数按「成熟城市在 7% 税率下要有约 40% 盈余」反推。
+  // 之前 1.6 时，连一座服务齐全的成熟城市都是净亏损，玩家怎么经营都会破产。
+  const income = (game.pop.R * game.tax.R + game.pop.C * game.tax.C + game.pop.I * game.tax.I)
+                 / 100 * 2.6 + 20;
+  let roads=0, aves=0, wires=0, subs=0;
+  for(let i=0;i<N;i++){
+    const t = map.type[i];
+    if(t===T.ROAD){ if(map.roadTier[i]) aves++; else roads++; }
+    else if(t===T.WIRE) wires++;
+    if(map.subway[i]) subs++;
+  }
+  let bldUp = 0;
+  for(const rec of game.buildings){
+    const d = BLD[rec.b];
+    const f = d.kind && game.funding[d.kind] !== undefined ? clamp(game.funding[d.kind],0,1.5) : 1;
+    bldUp += d.up * f;                       // 拨款少 -> 支出也少，这才叫取舍
+  }
+  const rf = clamp(game.funding.road, 0, 1.5);
+  let debt = 0;
+  for(let k=game.bonds.length-1; k>=0; k--){
+    const bd = game.bonds[k];
+    debt += bd.monthly; bd.left--;
+    if(bd.left <= 0) game.bonds.splice(k,1);
+  }
+  // 透支利息：年化约 5%，但封顶在收入的 22%。
+  // 不封顶的话利息本身就是第二个死亡螺旋——债越大利息越高，永远跑不赢。
+  // 封顶之后债务始终是「一笔可以靠增长摊薄的固定成本」。
+  const overdraft = game.money < 0
+    ? Math.min(-game.money * 0.004, Math.max(120, income * 0.22))
+    : 0;
+  game.debtPay = debt + overdraft;
+  const expense = (roads*UPKEEP.road + aves*UPKEEP.avenue) * rf + wires*UPKEEP.wire
+                + subs*UPKEEP.subway + game.parks*UPKEEP.park + bldUp + debt + overdraft;
+
+  game.lastIncome = income; game.lastExpense = expense;
+  game.money += income - expense;
+  game.month++;
+  if(game.month > 12){ game.month = 1; game.year++; }
+
+  // 每月采一次样，攒 60 年的历史
+  const H2 = game.history;
+  H2.t.push(game.year + game.month/12);
+  H2.R.push(game.pop.R); H2.C.push(game.pop.C); H2.I.push(game.pop.I);
+  H2.money.push(game.money); H2.income.push(income); H2.expense.push(expense);
+  H2.rating.push(game.rating); H2.crime.push(game.avgCrime);
+  H2.pol.push(game.avgPol); H2.traffic.push(game.avgTraffic); H2.edu.push(game.avgEdu);
+  if(H2.t.length > 720) for(const k in H2) H2[k].shift();
+  if(game.money < 0 && game.money > -400) log("市政资金告罄，服务开始退化", "bad");
+  if(game.year % 5 === 0 && game.month === 1) log(`${game.year} 年 · 人口 ${totalPop.toLocaleString()}`, "");
+}
+
+/* ---- 主 tick ---- */
+let tickPhase = 0;
+function tick(){
+  game.ticks++; tickPhase++;
+
+  updateSeasonWeather();
+  updateRoadDist();
+  updatePower();
+  updateWater();
+  updateCoverage();
+  if(tickPhase % 4 === 0){ updateTransit(); updateTraffic(); }
+  if(tickPhase % 4 === 1) updatePollution();
+  if(tickPhase % 4 === 2) updateCrime();
+  if(tickPhase % 4 === 3) updateLandValue();
+
+  updateFire();
+  updateTornado();
+  updateGrowth();
+  updateDemand();
+  updateRating();
+  maybeDisaster();
+
+  // 辐射极慢衰减
+  if(tickPhase % 20 === 0)
+    for(let i=0;i<N;i++) if(map.radiation[i] > 0) map.radiation[i] = Math.max(0, map.radiation[i] - 0.0015);
+
+  if(game.ticks % 6 === 0) monthlyBudget();
+  if(game.ticks % 40 === 0) checkAdvisor();
+  if(game.ticks % 20 === 0){
+    for(const b of BLD){
+      if(!b.unlock || game.unlockSeen && game.unlockSeen[b.key]) continue;
+      if(game.peakPop >= b.unlock){
+        game.unlockSeen = game.unlockSeen || {};
+        game.unlockSeen[b.key] = true;
+        log(`人口突破 ${b.unlock.toLocaleString()} —— 解锁「${b.name}」（${b.perk}）`, "");
+        sfx.unlock();
+        if(typeof buildToolbar === "function") buildToolbar();
+      }
+    }
+  }
+}
+
+/* =======================================================================
+   9.5 活物层：昼夜、车流、行人、烟、应急车辆、鸟
+   除了消防车（会真的加快灭火）之外，这一层全部是表现，不参与模拟计算。
+   ======================================================================= */
+
+/* ---- 昼夜时钟。一天 288 tick，正好一 tick = 5 分钟 ---- */
+const DAY_TICKS = 288;
+let tickFrac = 0;                       // 当前 tick 内的插值，让时钟在帧之间平滑
+const clockNow = () => ((game.ticks + tickFrac) % DAY_TICKS) / DAY_TICKS;
+const hourNow  = () => clockNow() * 24;
+
+/* 按小时插值的关键帧工具 */
+function keyframe(h, pts){
+  for(let k=0; k<pts.length-1; k++){
+    const a = pts[k], b = pts[k+1];
+    if(h >= a[0] && h <= b[0]){
+      const t = (b[0]-a[0]) < 1e-6 ? 0 : (h-a[0])/(b[0]-a[0]);
+      const out = [];
+      for(let m=1; m<a.length; m++) out.push(lerp(a[m], b[m], t));
+      return out;
+    }
+  }
+  return pts[pts.length-1].slice(1);
+}
+
+/* 天色。不再是黑夜一刀切，而是黄昏偏暖、凌晨偏冷的连续过渡 */
+const SKY = [
+  [0,   10,16,44,.52], [4.5, 10,16,44,.52], [6.0, 120,70,90,.34],
+  [7.2, 255,196,146,.12], [8.5, 0,0,0,0],   [16.5, 0,0,0,0],
+  [18.0, 255,170,90,.20], [19.3, 170,80,70,.34], [20.6, 10,16,44,.52],
+  [24,  10,16,44,.52],
+];
+function skyTint(h){
+  const [r,g,b,a] = keyframe(h, SKY);
+  return a < 0.012 ? null : `rgba(${r|0},${g|0},${b|0},${a.toFixed(3)})`;
+}
+const lightsOn = h => h < 6.6 || h > 17.8;
+
+/* 上下班高峰。深夜路上几乎没车，早晚两个峰 */
+const CAR_RUSH = [
+  [0,.14],[4,.10],[6,.45],[7.5,1.55],[9,1.25],[11,.95],[13,1.05],
+  [15,1.0],[17,1.5],[18.5,1.7],[20,1.0],[22,.5],[24,.14],
+];
+const PED_RUSH = [
+  [0,.06],[5,.10],[7,.9],[9,.7],[12,1.35],[14,1.1],[17,1.4],
+  [19,1.15],[21,.6],[23,.2],[24,.06],
+];
+const PARK_RUSH = [
+  [0,0],[6,.05],[9,.7],[11,1.3],[14,1.5],[17,1.35],[19,.7],[21,.15],[24,0],
+];
+
+/* ---- 活物容器 ---- */
+const agents = { cars: [], peds: [], boats: [], parkPeds: [], smoke: [], units: [], birds: [] };
+const CAR_COL = ["#d8d8dc","#c9584a","#4a6fd8","#3a3f47","#d8b64a","#4a9c68","#8a5ac9","#e08a3a"];
+const PED_COL = ["#3a4a68","#7a4252","#3d5a3a","#5e4a33","#4a4a54","#8a4a38","#365c66","#68425e"];
+const PED_SKIN = ["#e8bd94","#d1a077","#a87850","#f0cfad","#8c5f3d"];
+let agentClock = 0;                     // 真实秒，用来驱动红绿灯和风
+
+/* ---- 路网导航 ---- */
+function roadNeighbors(i, exclude){
+  const x = i%W, y = (i/W)|0, out = [];
+  for(const [dx,dy] of DIR4){
+    const nx=x+dx, ny=y+dy;
+    if(!inb(nx,ny)) continue;
+    const j = idx(nx,ny);
+    if(map.type[j] !== T.ROAD || j === exclude) continue;
+    out.push(j);
+  }
+  return out;
+}
+function pickNext(from, to){
+  const opts = roadNeighbors(to, from);
+  if(!opts.length){
+    const back = roadNeighbors(to, -1);
+    return back.length ? back[0] : -1;
+  }
+  const fx = from%W, fy = (from/W)|0, tx = to%W, ty = (to/W)|0;
+  const dx = tx-fx, dy = ty-fy;
+  const straight = inb(tx+dx,ty+dy) ? idx(tx+dx,ty+dy) : -1;
+  if(straight >= 0 && opts.includes(straight) && Math.random() < 0.68) return straight;
+  return opts[(Math.random()*opts.length)|0];
+}
+function randomRoad(){
+  for(let k=0;k<60;k++){
+    const i = (Math.random()*N)|0;
+    if(map.type[i] === T.ROAD) return i;
+  }
+  return -1;
+}
+/* 十字路口（四向都通）才装红绿灯 */
+const isCross = i => roadNeighbors(i, -1).length === 4;
+/* 东西向绿灯？各路口用 i%5 错开相位，免得全城同步跳变 */
+function greenEW(i){
+  return ((agentClock * 0.30 + (i % 5) * 0.41) % 2) < 1;
+}
+/* 路网 BFS 寻路，给应急车辆用 */
+const _prev = new Int32Array(N);
+function roadPath(start, goal){
+  if(start === goal) return [start];
+  _prev.fill(-2);
+  _prev[start] = -1;
+  const q = [start];
+  for(let h=0; h<q.length; h++){
+    const i = q[h];
+    if(i === goal){
+      const out = [];
+      for(let c=goal; c>=0; c=_prev[c]) out.push(c);
+      return out.reverse();
+    }
+    const x=i%W, y=(i/W)|0;
+    for(const [dx,dy] of DIR4){
+      const nx=x+dx, ny=y+dy;
+      if(!inb(nx,ny)) continue;
+      const j = idx(nx,ny);
+      if(map.type[j] !== T.ROAD || _prev[j] !== -2) continue;
+      _prev[j] = i; q.push(j);
+    }
+  }
+  return null;
+}
+function nearestRoad(x, y, r=5){
+  let best=-1, bd=1e9;
+  for(let dy=-r;dy<=r;dy++) for(let dx=-r;dx<=r;dx++){
+    if(!inb(x+dx,y+dy)) continue;
+    const j = idx(x+dx,y+dy);
+    if(map.type[j] !== T.ROAD) continue;
+    const d = dx*dx+dy*dy;
+    if(d < bd){ bd=d; best=j; }
+  }
+  return best;
+}
+
+/* ---- 生成器 ---- */
+function spawnCar(police){
+  const from = randomRoad();
+  if(from < 0) return null;
+  const opts = roadNeighbors(from, -1);
+  if(!opts.length) return null;
+  return { from, to: opts[(Math.random()*opts.length)|0], t: Math.random(),
+           spd: police ? 3.4 : 2.6 + Math.random()*1.5,
+           police: !!police,
+           col: police ? "#2e3f6b" : CAR_COL[(Math.random()*CAR_COL.length)|0] };
+}
+function spawnPed(){
+  for(let k=0;k<50;k++){
+    const i = randomRoad();
+    if(i < 0) return null;
+    const x=i%W, y=(i/W)|0;
+    let lively = false;
+    for(const [dx,dy] of DIR4){
+      if(!inb(x+dx,y+dy)) continue;
+      const j = idx(x+dx,y+dy);
+      if(isZone(map.type[j]) && map.density[j] > 0){ lively = true; break; }
+    }
+    if(!lively) continue;
+    const opts = roadNeighbors(i, -1);
+    if(!opts.length) continue;
+    return { from:i, to:opts[(Math.random()*opts.length)|0], t:Math.random(),
+             spd: 0.42 + Math.random()*0.30,
+             col: PED_COL[(Math.random()*PED_COL.length)|0],
+             skin: PED_SKIN[(Math.random()*PED_SKIN.length)|0] };
+  }
+  return null;
+}
+/* 公园里的人不走路网，就在园子里晃 */
+function spawnParkPed(){
+  for(let k=0;k<60;k++){
+    const i = (Math.random()*N)|0;
+    if(!map.park[i]) continue;
+    const a = Math.random()*Math.PI*2;
+    return { i, fx:(i%W)+.2+Math.random()*.6, fy:((i/W)|0)+.2+Math.random()*.6,
+             vx:Math.cos(a)*.22, vy:Math.sin(a)*.22,
+             sit: Math.random() < .35, turn: 1 + Math.random()*3,
+             col: PED_COL[(Math.random()*PED_COL.length)|0],
+             skin: PED_SKIN[(Math.random()*PED_SKIN.length)|0] };
+  }
+  return null;
+}
+function spawnBoat(){
+  for(let k=0;k<60;k++){
+    const i = (Math.random()*N)|0;
+    if(map.type[i] !== T.WATER) continue;
+    const x=i%W, y=(i/W)|0;
+    let open = true;
+    for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++)
+      if(!inb(x+dx,y+dy) || map.type[idx(x+dx,y+dy)] !== T.WATER) open = false;
+    if(!open) continue;
+    const a = Math.random()*Math.PI*2;
+    return { fx:x+.5, fy:y+.5, vx:Math.cos(a)*0.30, vy:Math.sin(a)*0.30,
+             col: Math.random()<.5 ? "#d8cfc0" : "#c98a5a" };
+  }
+  return null;
+}
+function spawnBird(){
+  const edge = Math.random() < .5;
+  const a = Math.random()*Math.PI*2;
+  return { fx: edge ? -2 : Math.random()*W, fy: edge ? Math.random()*H : -2,
+           vx: Math.cos(a)*1.5 + 1.2, vy: Math.sin(a)*0.9,
+           ph: Math.random()*6, n: 2 + ((Math.random()*4)|0) };
+}
+
+/* ---- 烟囱 ---- */
+/* 每种建筑的烟囱口位置（瓦片内像素坐标）。数值对应各自 sprite 里烟囱的画法 */
+const CHIMNEY = {
+  I2:   [[24, 1, "s"]],
+  I3:   [[6, 1, "s"], [13, 3, "s"]],
+  coal: [[19, 3, "s"], [38, 9, "s"], [77, 24, "v"]],
+  gas:  [[20, 5, "l"]],
+  nuke: [[90, 28, "v"], [114, 28, "v"]],
+};
+const SMOKE_COL = { s:[92,88,84], l:[168,166,162], v:[226,230,236] };
+function rebuildSmokeSources(){
+  const out = [];
+  for(let i=0;i<N;i++){
+    if(map.type[i] !== T.I || map.density[i] < 2) continue;
+    const x=i%W, y=(i/W)|0;
+    for(const [ox,oy,c] of CHIMNEY[map.density[i]===2 ? "I2" : "I3"])
+      out.push([x*TS+ox, y*TS+oy, c, .95]);
+  }
+  for(const rec of game.buildings){
+    const key = BLD[rec.b].key;
+    if(!CHIMNEY[key] || !bldActive(rec)) continue;
+    for(const [ox,oy,c] of CHIMNEY[key])
+      out.push([rec.x*TS+ox, rec.y*TS+oy, c, 1.6]);
+  }
+  game.smokeSrc = out;
+}
+/* 风向缓慢转动，烟和污染看起来才不是死的 */
+function windAt(){
+  const a = agentClock * 0.055;
+  return [Math.cos(a)*0.75 + Math.sin(a*0.37)*0.35, Math.sin(a*0.6)*0.30 - 0.12];
+}
+
+/* ---- 应急车辆：消防车真的从消防站开到火场 ---- */
+function dispatchUnits(){
+  const trucks = agents.units.filter(u => u.kind === "fire");
+  if(trucks.length >= 7) return;
+  const taken = new Set(trucks.map(u => u.target));
+  const stations = game.buildings.filter(r => BLD[r.b].kind === "fire" && bldActive(r));
+  if(!stations.length) return;
+
+  for(let i=0;i<N;i++){
+    if(!map.onFire[i] || taken.has(i)) continue;
+    const fx = i%W, fy = (i/W)|0;
+    const goal = nearestRoad(fx, fy, 3);
+    if(goal < 0) continue;
+    // 找最近的消防站
+    let best=null, bd=1e9;
+    for(const st of stations){
+      const d = Math.abs(st.x-fx) + Math.abs(st.y-fy);
+      if(d < bd){ bd=d; best=st; }
+    }
+    if(!best) return;
+    const home = nearestRoad(best.x + (BLD[best.b].w>>1), best.y + (BLD[best.b].h>>1), 5);
+    if(home < 0) continue;
+    const path = roadPath(home, goal);
+    if(!path || path.length < 1) continue;
+    agents.units.push({ kind:"fire", path, pos:0, t:0, spd:7.0, target:i, home, state:"go" });
+    sfx.siren();
+    taken.add(i);
+    if(agents.units.filter(u=>u.kind==="fire").length >= 7) return;
+  }
+}
+/* 消防车在场时，该格及相邻格灭火速度大幅提升 —— 这是唯一会影响模拟的活物 */
+function truckBoost(i){
+  const x=i%W, y=(i/W)|0;
+  for(const u of agents.units){
+    if(u.kind !== "fire" || u.state !== "onscene") continue;
+    const p = u.path[u.pos];
+    const px0 = p%W, py0 = (p/W)|0;
+    if(Math.abs(px0-x) <= 1 && Math.abs(py0-y) <= 1) return 0.40;
+  }
+  return 0;
+}
+
+/* ---- 每帧更新 ---- */
+function updateAgents(dtSec){
+  if(game.speed === 0) return;
+  const rate = Math.min(1 + (game.speed-1)*0.25, 2.2);
+  const dt = dtSec * rate;
+  agentClock += dt;
+
+  const h = hourNow();
+  const pop = game.pop.R + game.pop.C + game.pop.I;
+  const carMul  = keyframe(h, CAR_RUSH)[0];
+  const pedMul  = keyframe(h, PED_RUSH)[0];
+  const parkMul = keyframe(h, PARK_RUSH)[0];
+
+  const wx0 = isSnow() ? 0.6 : isWet() ? 0.82 : 1;   // 恶劣天气出行的人少
+  const AG = IS_MOBILE ? 0.42 : IS_TABLET ? 0.7 : 1;   // 移动端减少活物数量
+  const wantCars  = clamp(Math.round(pop/26 * carMul * wx0 * AG), 0, IS_MOBILE ? 190 : 460);
+  const wantPeds  = clamp(Math.round(pop/55 * pedMul * wx0 * wx0 * AG), 0, IS_MOBILE ? 120 : 320);
+  const wantPark  = clamp(Math.round(game.parks * 4.6 * parkMul * (isWet()||isSnow() ? 0.12 : 1) * AG), 0, IS_MOBILE ? 100 : 260);
+  let waterTiles = 0;
+  for(let i=0;i<N;i+=7) if(map.type[i]===T.WATER) waterTiles += 7;
+  const wantBoats = clamp(Math.floor(waterTiles/90), 0, 10);
+  const wantBirds = pop > 300 ? 3 : 1;
+
+  const top = (arr, want, mk) => {
+    if(arr.length > want){ arr.length = want; return; }
+    for(let k=arr.length; k<want; k++){ const a = mk(); if(!a) break; arr.push(a); }
+  };
+  if(game.ticks % 2 === 0 || agents.cars.length < wantCars*0.5){
+    top(agents.cars,     wantCars,  () => spawnCar(Math.random() < 0.045));
+    top(agents.peds,     wantPeds,  spawnPed);
+    top(agents.parkPeds, wantPark,  spawnParkPed);
+    top(agents.boats,    wantBoats, spawnBoat);
+    top(agents.birds,    wantBirds, spawnBird);
+  }
+  if(game.ticks % 30 === 0) rebuildSmokeSources();
+  if(game.ticks % 3 === 0) dispatchUnits();
+
+  /* 路网上的车与行人 */
+  const step = (arr, respawn, obeyLights) => {
+    for(let k=arr.length-1; k>=0; k--){
+      const a = arr[k];
+      if(map.type[a.to] !== T.ROAD || map.type[a.from] !== T.ROAD){
+        const n = respawn(); if(n) arr[k] = n; else arr.splice(k,1);
+        continue;
+      }
+      // 红灯停：车在进入路口前停住，于是路口会排队
+      if(obeyLights && a.t > 0.84 && isCross(a.to)){
+        const ew = (a.to % W) !== (a.from % W);
+        if(greenEW(a.to) !== ew){ a.t = 0.84; continue; }
+      }
+      const jam = 1 / (1 + congestOf(a.to) * 1.7);
+      a.t += a.spd * Math.max(jam, 0.12) * dt;
+      while(a.t >= 1){
+        a.t -= 1;
+        const nxt = pickNext(a.from, a.to);
+        if(nxt < 0){ const n = respawn(); if(n) arr[k] = n; else arr.splice(k,1); break; }
+        a.from = a.to; a.to = nxt;
+      }
+    }
+  };
+  step(agents.cars, () => spawnCar(Math.random() < 0.045), true);
+  step(agents.peds, spawnPed, false);
+
+  /* 公园里的人：小范围随机游走，一部分坐着不动 */
+  for(let k=agents.parkPeds.length-1; k>=0; k--){
+    const p = agents.parkPeds[k];
+    if(!map.park[p.i]){
+      const n = spawnParkPed(); if(n) agents.parkPeds[k] = n; else agents.parkPeds.splice(k,1);
+      continue;
+    }
+    if(p.sit) continue;
+    p.turn -= dt;
+    if(p.turn <= 0){
+      const a = Math.random()*Math.PI*2;
+      p.vx = Math.cos(a)*.22; p.vy = Math.sin(a)*.22;
+      p.turn = 1 + Math.random()*3;
+    }
+    const bx = p.i%W, by = (p.i/W)|0;
+    p.fx = clamp(p.fx + p.vx*dt, bx+.15, bx+.85);
+    p.fy = clamp(p.fy + p.vy*dt, by+.15, by+.85);
+  }
+
+  /* 船 */
+  for(let k=agents.boats.length-1; k>=0; k--){
+    const b = agents.boats[k];
+    let nx = b.fx + b.vx*dt, ny = b.fy + b.vy*dt;
+    const ti = inb(nx|0, ny|0) ? idx(nx|0, ny|0) : -1;
+    if(ti < 0 || map.type[ti] !== T.WATER){
+      b.vx = -b.vx + (Math.random()-.5)*0.14;
+      b.vy = -b.vy + (Math.random()-.5)*0.14;
+      nx = b.fx; ny = b.fy;
+      if(Math.random() < 0.25){ const n = spawnBoat(); if(n){ agents.boats[k] = n; continue; } }
+    }
+    b.fx = nx; b.fy = ny;
+  }
+
+  /* 鸟 */
+  for(let k=agents.birds.length-1; k>=0; k--){
+    const b = agents.birds[k];
+    b.fx += b.vx*dt; b.fy += b.vy*dt; b.ph += dt*9;
+    if(b.fx < -4 || b.fx > W+4 || b.fy < -4 || b.fy > H+4) agents.birds[k] = spawnBird();
+  }
+
+  /* 烟：从烟囱口冒出，被风带走，边升边散 */
+  const [wx, wy] = windAt();
+  const src = game.smokeSrc || [];
+  if(src.length && agents.smoke.length < (IS_MOBILE ? 120 : 300)){
+    const budget = Math.min(14, Math.ceil(src.length * 0.5));
+    for(let k=0;k<budget;k++){
+      const s = src[(Math.random()*src.length)|0];
+      if(Math.random() > s[3]*0.40) continue;
+      agents.smoke.push({ x:s[0]+.5, y:s[1], age:0,
+        life: 2.6 + Math.random()*2.4, col: SMOKE_COL[s[2]],
+        vx: (Math.random()-.5)*2.2, vy: -(9 + Math.random()*7) });
+    }
+  }
+  for(let k=agents.smoke.length-1; k>=0; k--){
+    const p = agents.smoke[k];
+    p.age += dt;
+    if(p.age >= p.life){ agents.smoke.splice(k,1); continue; }
+    p.x += (p.vx + wx*19*(0.3 + p.age)) * dt;
+    p.y += p.vy * dt;
+    p.vy *= (1 - 0.7*dt);
+  }
+
+  /* 应急车辆沿预先算好的路径行驶 */
+  for(let k=agents.units.length-1; k>=0; k--){
+    const u = agents.units[k];
+    const cur = u.path[u.pos];
+    if(cur === undefined || map.type[cur] !== T.ROAD){ agents.units.splice(k,1); continue; }
+    if(u.state === "onscene"){
+      if(!map.onFire[u.target]){ u.state = "back"; u.path = u.path.slice().reverse(); u.pos = 0; u.t = 0; }
+      continue;
+    }
+    u.t += u.spd * dt;
+    while(u.t >= 1){
+      u.t -= 1;
+      if(u.pos >= u.path.length-1){
+        if(u.state === "go"){ u.state = "onscene"; u.t = 0; }
+        else { agents.units.splice(k,1); }
+        break;
+      }
+      u.pos++;
+    }
+  }
+}
+
+/* ---- 绘制 ---- */
+function agentPos(a, lane){
+  const fx = a.from%W, fy = (a.from/W)|0, tx = a.to%W, ty = (a.to/W)|0;
+  const dx = tx-fx, dy = ty-fy;
+  const cx = lerp(fx+.5, tx+.5, a.t) * TS;
+  const cy = lerp(fy+.5, ty+.5, a.t) * TS;
+  return { x: cx + (-dy)*lane, y: cy + dx*lane, dx, dy };
+}
+function drawCarBody(ctx, x, y, dx, dy, col, night, flash){
+  const horiz = dx !== 0;
+  const L = 9, Wd = 5;                       // 32px 瓦片下的车身尺寸
+  const bw = horiz ? L : Wd, bh = horiz ? Wd : L;
+  const bx = x - (bw>>1), by = y - (bh>>1);
+  ctx.fillStyle = "rgba(28,38,58,.32)";
+  ctx.fillRect(bx+1, by+2, bw, bh);
+  ctx.fillStyle = col;
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = "rgba(255,255,255,.22)"; ctx.fillRect(bx, by, bw, 1);
+  ctx.fillStyle = "rgba(0,0,0,.26)";       ctx.fillRect(bx, by+bh-1, bw, 1);
+  ctx.fillStyle = "rgba(26,34,52,.62)";
+  if(horiz) ctx.fillRect(bx + (dx>0 ? 2 : 3), by+1, 4, bh-2);
+  else      ctx.fillRect(bx+1, by + (dy>0 ? 2 : 3), bw-2, 4);
+  if(flash){
+    ctx.fillStyle = ((agentClock*7)|0) % 2 ? "#ff4a38" : "#5fa0ff";
+    if(horiz) ctx.fillRect(bx+3, by-1, 3, 1); else ctx.fillRect(bx-1, by+3, 1, 3);
+  }
+  if(night){
+    ctx.fillStyle = "#fff0bc";
+    if(horiz){ ctx.fillRect(dx>0 ? bx+bw : bx-1, by+1, 1, 1); ctx.fillRect(dx>0 ? bx+bw : bx-1, by+bh-2, 1, 1); }
+    else     { ctx.fillRect(bx+1, dy>0 ? by+bh : by-1, 1, 1); ctx.fillRect(bx+bw-2, dy>0 ? by+bh : by-1, 1, 1); }
+    ctx.fillStyle = "rgba(255,240,188,.15)";
+    if(horiz) ctx.fillRect(dx>0 ? bx+bw : bx-9, by, 9, bh);
+    else      ctx.fillRect(bx, dy>0 ? by+bh : by-9, bw, 9);
+  }
+}
+
+/* 雨雪。不做粒子系统，直接按屏幕坐标程序化铺，成本恒定 */
+function drawWeather(ctx, x0, y0, x1, y1){
+  const w = game.weather;
+  if(w !== "rain" && w !== "storm" && w !== "snow") return;
+  const t = agentClock;
+  const px0 = x0*TS, py0 = y0*TS, pw = (x1-x0)*TS, ph = (y1-y0)*TS;
+  if(w === "snow"){
+    ctx.fillStyle = "rgba(255,255,255,.85)";
+    const n = Math.round(pw*ph/1400 * game.wIntensity);
+    for(let k=0;k<n;k++){
+      const seed = k*2654435761 % 100000;
+      const bx = (seed % pw);
+      const drift = Math.sin(t*0.6 + k)*9;
+      const by = ((seed*7 + t*26) % ph);
+      ctx.fillRect(px0 + ((bx+drift+pw)%pw)|0, py0 + by|0, 2, 2);
+    }
+  } else {
+    const heavy = w === "storm";
+    ctx.fillStyle = heavy ? "rgba(190,210,235,.42)" : "rgba(180,205,230,.32)";
+    const n = Math.round(pw*ph/900 * game.wIntensity);
+    for(let k=0;k<n;k++){
+      const seed = k*2246822519 % 100000;
+      const bx = (seed % pw);
+      const by = ((seed*13 + t*(heavy?520:340)) % ph);
+      ctx.fillRect(px0 + bx|0, py0 + by|0, 1, heavy ? 9 : 6);
+    }
+    // 雷闪
+    if(heavy && Math.sin(t*3.1)>0.995){
+      ctx.fillStyle = "rgba(255,255,255,.30)";
+      ctx.fillRect(px0, py0, pw, ph);
+      if(!game._lastBolt || t - game._lastBolt > 2){ game._lastBolt = t; sfx.thunder(); }
+    }
+  }
+}
+
+function drawAgents(ctx, x0, y0, x1, y1, night){
+  // 船
+  for(const b of agents.boats){
+    if(b.fx < x0-1 || b.fx > x1+1 || b.fy < y0-1 || b.fy > y1+1) continue;
+    const x = b.fx*TS, y = b.fy*TS;
+    const horiz = Math.abs(b.vx) >= Math.abs(b.vy);
+    ctx.fillStyle = "rgba(255,255,255,.20)";
+    ctx.fillRect(x-7, y+4, 14, 2); ctx.fillRect(x-9, y+2, 4, 1); ctx.fillRect(x+6, y+2, 4, 1);
+    ctx.fillStyle = b.col;
+    if(horiz){
+      ctx.fillRect(x-6, y-2, 12, 4); ctx.fillRect(x-4, y-4, 7, 2);
+      ctx.fillStyle = "rgba(0,0,0,.22)"; ctx.fillRect(x-6, y+1, 12, 1);
+      ctx.fillStyle = "#f2f5f8"; ctx.fillRect(x-1, y-8, 1, 5);
+    } else {
+      ctx.fillRect(x-2, y-6, 4, 12); ctx.fillRect(x-4, y-4, 2, 7);
+      ctx.fillStyle = "rgba(0,0,0,.22)"; ctx.fillRect(x+1, y-6, 1, 12);
+      ctx.fillStyle = "#f2f5f8"; ctx.fillRect(x-8, y-1, 5, 1);
+    }
+  }
+  // 红绿灯
+  for(let y=y0; y<y1; y++) for(let x=x0; x<x1; x++){
+    const i = idx(x,y);
+    if(map.type[i] !== T.ROAD || !isCross(i)) continue;
+    const ew = greenEW(i);
+    const bx = x*TS, by = y*TS;
+    const post = (px0, py0, green) => {
+      ctx.fillStyle = "rgba(28,38,58,.30)"; ctx.fillRect(px0+1, py0+7, 3, 1);
+      ctx.fillStyle = "#4c525c"; ctx.fillRect(px0+1, py0+2, 1, 5);
+      ctx.fillStyle = "#33383f"; ctx.fillRect(px0, py0-2, 3, 5);
+      ctx.fillStyle = green ? "#3a4048" : "#ff5646"; ctx.fillRect(px0+1, py0-1, 1, 1);
+      ctx.fillStyle = green ? "#54e878" : "#3a4048"; ctx.fillRect(px0+1, py0+1, 1, 1);
+    };
+    post(bx+4, by+6, !ew); post(bx+26, by+25, !ew);
+    post(bx+26, by+6, ew); post(bx+4,  by+25, ew);
+  }
+  // 公园里的人
+  for(const p of agents.parkPeds){
+    if(p.fx < x0-1 || p.fx > x1+1 || p.fy < y0-1 || p.fy > y1+1) continue;
+    const ex = (p.fx*TS)|0, ey = (p.fy*TS)|0;
+    ctx.fillStyle = "rgba(28,38,58,.30)"; ctx.fillRect(ex-1, ey+1, 3, 1);
+    ctx.fillStyle = p.col;
+    if(p.sit){ ctx.fillRect(ex, ey-2, 2, 3); ctx.fillStyle = p.skin; ctx.fillRect(ex, ey-4, 2, 2); }
+    else     { ctx.fillRect(ex, ey-3, 2, 4); ctx.fillStyle = p.skin; ctx.fillRect(ex, ey-5, 2, 2); }
+  }
+  // 街上的行人
+  for(const p of agents.peds){
+    const px0 = p.from%W, py0 = (p.from/W)|0;
+    if(px0 < x0-1 || px0 > x1+1 || py0 < y0-1 || py0 > y1+1) continue;
+    const q = agentPos(p, 10.0);
+    const ex = q.x|0, ey = q.y|0;
+    ctx.fillStyle = "rgba(28,38,58,.32)"; ctx.fillRect(ex-1, ey+1, 3, 1);
+    ctx.fillStyle = p.col; ctx.fillRect(ex, ey-3, 2, 4);
+    ctx.fillStyle = p.skin; ctx.fillRect(ex, ey-5, 2, 2);
+  }
+  // 车
+  for(const c of agents.cars){
+    const cx0 = c.from%W, cy0 = (c.from/W)|0;
+    if(cx0 < x0-1 || cx0 > x1+1 || cy0 < y0-1 || cy0 > y1+1) continue;
+    const q = agentPos(c, 4.4);
+    drawCarBody(ctx, q.x|0, q.y|0, q.dx, q.dy, c.col, night, c.police);
+  }
+  // 消防车
+  for(const u of agents.units){
+    const a = u.path[u.pos], b = u.path[Math.min(u.pos+1, u.path.length-1)];
+    if(a === undefined) continue;
+    const ax=a%W, ay=(a/W)|0, bx=b%W, by=(b/W)|0;
+    if(ax < x0-1 || ax > x1+1 || ay < y0-1 || ay > y1+1) continue;
+    const dx = bx-ax, dy = by-ay;
+    const t = u.state === "onscene" ? 0 : u.t;
+    const cx = lerp(ax+.5, bx+.5, t)*TS + (-dy)*4.4;
+    const cy = lerp(ay+.5, by+.5, t)*TS + dx*4.4;
+    drawCarBody(ctx, cx|0, cy|0, dx||1, dy, "#c2372b", night, true);
+  }
+  // 烟
+  for(const p of agents.smoke){
+    const tx = p.x/TS, ty = p.y/TS;
+    if(tx < x0-2 || tx > x1+2 || ty < y0-3 || ty > y1+2) continue;
+    const f = p.age/p.life;
+    const sz = 3 + f*7;
+    ctx.globalAlpha = (1-f) * 0.58;
+    ctx.fillStyle = `rgb(${p.col[0]},${p.col[1]},${p.col[2]})`;
+    ctx.fillRect((p.x-sz/2)|0, (p.y-sz/2)|0, Math.ceil(sz), Math.ceil(sz));
+    ctx.globalAlpha = 1;
+  }
+  // 鸟
+  for(const b of agents.birds){
+    if(b.fx < x0-2 || b.fx > x1+2 || b.fy < y0-2 || b.fy > y1+2) continue;
+    ctx.fillStyle = "rgba(30,34,42,.65)";
+    for(let k=0;k<b.n;k++){
+      const ox = (b.fx + k*0.42 - (k%2)*0.2)*TS;
+      const oy = (b.fy + (k%2)*0.32)*TS + Math.sin(b.ph + k)*2.2;
+      const up = Math.sin(b.ph*1.7 + k*1.3) > 0;
+      ctx.fillRect(ox|0, oy|0, 1, 1);
+      ctx.fillRect((ox-1)|0, (oy + (up?-1:1))|0, 1, 1);
+      ctx.fillRect((ox+1)|0, (oy + (up?-1:1))|0, 1, 1);
+    }
+  }
+}
+
+/* 天气。持续若干 tick 后重新掷一次，冬天下雪、夏天多雷雨。
+   雨雪不只是画面：雨压制火势，雪让路面变滑、通行能力下降。 */
+const WEATHER = {
+  clear:  { nm:"晴",   tint:null },
+  cloudy: { nm:"多云", tint:"rgba(120,132,150,.16)" },
+  rain:   { nm:"雨",   tint:"rgba(58,74,102,.30)" },
+  storm:  { nm:"雷雨", tint:"rgba(40,52,76,.44)" },
+  snow:   { nm:"雪",   tint:"rgba(186,204,222,.26)" },
+};
+function rollWeather(){
+  const se = game.season;
+  const table = se===3 ? [["clear",.34],["cloudy",.30],["snow",.36]]
+              : se===1 ? [["clear",.52],["cloudy",.24],["rain",.16],["storm",.08]]
+              : se===2 ? [["clear",.40],["cloudy",.32],["rain",.28]]
+              :          [["clear",.44],["cloudy",.28],["rain",.28]];
+  let r = Math.random(), acc2 = 0;
+  for(const [k,pr] of table){ acc2 += pr; if(r <= acc2){ game.weather = k; break; } }
+  game.wIntensity = game.weather === "storm" ? 1 : 0.45 + Math.random()*0.5;
+  game.wTimer = 40 + ((Math.random()*90)|0);
+}
+function updateSeasonWeather(){
+  const se = seasonOf(game.month);
+  if(se !== game.season){
+    game.season = se;
+    spriteCache.clear();             // 换季要重画所有植被精灵
+    log(`入${SEASON[se].nm}了`, "");
+  }
+  SE = game.season;
+  if(--game.wTimer <= 0) rollWeather();
+}
+const isWet  = () => game.weather === "rain" || game.weather === "storm";
+const isSnow = () => game.weather === "snow";
+
+let lastWarn = {};
+function warnOnce(key, text, cls, cooldown=1200){
+  if(game.ticks - (lastWarn[key]||-9999) < cooldown) return;
+  lastWarn[key] = game.ticks;
+  log(text, cls);
+}
+function checkAdvisor(){
+  let unpowered=0, unwatered=0, noRoad=0, zoned=0;
+  for(let i=0;i<N;i++){
+    if(!isZone(map.type[i])) continue;
+    zoned++;
+    if(!map.powered[i]) unpowered++;
+    if(!map.watered[i]) unwatered++;
+    if(map.roadDist[i] > 3) noRoad++;
+  }
+  if(zoned > 0 && game.powerCap === 0) warnOnce("nopower","全城断电！必须马上建一座电厂","bad", 300);
+  else if(zoned > 0 && unpowered/zoned > 0.25) warnOnce("power","大片区域没有电力供应","bad");
+  if(zoned > 0 && game.waterCap === 0){
+    const built = game.buildings.some(r => BLD[r.b].water);
+    warnOnce("nowater", built ? "水厂没有接进电网，一滴水也送不出去" : "一座水厂都没有，建筑全部卡在 Lv1", "warn", 600);
+  }
+  if(zoned > 0 && unwatered/zoned > 0.3)  warnOnce("water","供水不足，高密度建筑盖不起来","warn");
+  if(zoned > 0 && noRoad/zoned > 0.25)    warnOnce("road","有地块接不到道路，无法发展","warn");
+  if(game.powerCap && game.powerLoad > game.powerCap*0.9) warnOnce("cap","电力接近满载，需要新建电厂","warn");
+  if(game.waterCap && game.waterLoad > game.waterCap*0.9) warnOnce("wcap","供水接近满载，需要更多水源","warn");
+  if(game.avgCrime > 0.28)   warnOnce("crime","犯罪率过高，居民正在搬走 —— 建警察局","bad");
+  if(game.avgTraffic > 1.2)  warnOnce("traffic","主干道严重拥堵 —— 把主干升级成大道，或修地铁分流","warn");
+  if(game.metroStations === 1) warnOnce("metro1","只有一座地铁站没用，至少要两座连成线","warn", 500);
+  if(game.metroStations >= 2 && game.metroLines === 0)
+    warnOnce("metro0","地铁站之间没有连通的线路，客流为零","bad", 500);
+  if(game.avgEdu < 0.12 && zoned > 120) warnOnce("edu","城里没有学校，高端商业发展不起来","warn");
+  if(game.fires > 0 && game.buildings.every(r => BLD[r.b].kind !== "fire"))
+    warnOnce("nofire","还没有消防站，火会一直烧下去","bad", 400);
+  if(game.demand.R > 0.55) warnOnce("rdem","居民想搬进来 —— 多划住宅区","");
+  if(game.demand.C > 0.55) warnOnce("cdem","商业需求旺盛 —— 多划商业区","");
+  if(game.demand.I > 0.55) warnOnce("idem","工厂需要土地 —— 多划工业区","");
+  if(game.lastExpense > game.lastIncome*1.3 && game.money < 5000)
+    warnOnce("budget","支出超过收入 —— 提税、削减部门拨款，或发行市政债","warn");
+  if(game.funding.road < 0.7 && game.avgTraffic > 0.8)
+    warnOnce("roadfund","道路养护拨款不足，路面失修让拥堵雪上加霜","warn");
+  if(game.funding.police < 0.6 && game.avgCrime > 0.25)
+    warnOnce("polfund","警力拨款过低，覆盖范围正在收缩","warn");
+}
+
+/* =======================================================================
+   10. 渲染
+   ======================================================================= */
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+const wrap = document.getElementById("canvasWrap");
+const cam = { x: W*TS/2, y: H*TS/2, z: IS_MOBILE ? 0.55 : IS_TABLET ? 0.8 : 1 };
+
+function resize(){
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width  = wrap.clientWidth * dpr;
+  cv.height = wrap.clientHeight * dpr;
+  cv.style.width  = wrap.clientWidth + "px";
+  cv.style.height = wrap.clientHeight + "px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.imageSmoothingEnabled = false;
+}
+window.addEventListener("resize", resize);
+window.addEventListener("orientationchange", () => setTimeout(() => { resize(); clampCam(); }, 250));
+
+function screenToTile(sx, sy){
+  const wx = (sx - wrap.clientWidth/2)/cam.z + cam.x;
+  const wy = (sy - wrap.clientHeight/2)/cam.z + cam.y;
+  return [Math.floor(wx/TS), Math.floor(wy/TS)];
+}
+
+/* ---- 数据视图 ---- */
+const OVERLAYS = [
+  { key:"none",    name:"无", get: () => -1 },
+  { key:"power",   name:"电力",     grad:["#5a3a3a","#f2d94a"], get:i => conduct(i) ? (map.powered[i]?1:0) : -1, binary:true },
+  { key:"water",   name:"供水",     grad:["#5a3a3a","#4ad8f2"], get:i => conduct(i) ? (map.watered[i]?1:0) : -1, binary:true },
+  { key:"traffic", name:"交通拥堵", grad:["#3f7a52","#e2685e"], get:i => map.type[i]===T.ROAD ? clamp(congestOf(i)/2,0,1) : -1 },
+  { key:"transit", name:"地铁覆盖", grad:["#3a6a62","#4ac0a0"],
+    get:i => map.subway[i] ? 1 : (map.transit[i] ? 0.55 : -1), binary:false },
+  { key:"crime",   name:"犯罪率",   grad:["#4a5aa0","#e24a8a"], get:i => isZone(map.type[i]) ? map.crime[i] : -1 },
+  { key:"pol",     name:"警力覆盖", grad:["#3a4a72","#6fb4f2"], get:i => map.polCov[i] > .01 ? map.polCov[i] : -1 },
+  { key:"fireCov", name:"消防覆盖", grad:["#6a4a3a","#f9a05a"], get:i => map.fireCov[i] > .01 ? map.fireCov[i] : -1 },
+  { key:"edu",     name:"教育覆盖", grad:["#5f5a3a","#f2e04a"], get:i => map.edu[i] > .01 ? map.edu[i] : -1 },
+  { key:"pollute", name:"污染",     grad:["#4a6a4a","#b4863a"], get:i => map.pollution[i] > .02 ? map.pollution[i] : -1 },
+  { key:"land",    name:"地价",     grad:["#a05a4a","#4ad86a"], get:i => map.landval[i] },
+  { key:"rad",     name:"辐射",     grad:["#4a6a4a","#8ce07a"], get:i => map.radiation[i] > .02 ? map.radiation[i] : -1 },
+];
+let overlay = OVERLAYS[0];
+function mixHex(a,b,t){
+  const pa=[parseInt(a.slice(1,3),16),parseInt(a.slice(3,5),16),parseInt(a.slice(5,7),16)];
+  const pb=[parseInt(b.slice(1,3),16),parseInt(b.slice(3,5),16),parseInt(b.slice(5,7),16)];
+  return `rgb(${Math.round(lerp(pa[0],pb[0],t))},${Math.round(lerp(pa[1],pb[1],t))},${Math.round(lerp(pa[2],pb[2],t))})`;
+}
+
+let waterFrame = 0, fireFrame = 0;
+let hoverX = -1, hoverY = -1;
+
+
+function draw(){
+  const vw = wrap.clientWidth, vh = wrap.clientHeight;
+  ctx.fillStyle = "#0e1015"; ctx.fillRect(0,0,vw,vh);
+  ctx.save();
+  ctx.translate(vw/2, vh/2); ctx.scale(cam.z, cam.z); ctx.translate(-cam.x, -cam.y);
+
+  const x0 = clamp(Math.floor((cam.x - vw/2/cam.z)/TS) - 1, 0, W-1);
+  const x1 = clamp(Math.ceil ((cam.x + vw/2/cam.z)/TS) + 1, 0, W);
+  const y0 = clamp(Math.floor((cam.y - vh/2/cam.z)/TS) - 1, 0, H-1);
+  const y1 = clamp(Math.ceil ((cam.y + vh/2/cam.z)/TS) + 4, 0, H);
+  const hour = hourNow();
+  const night = lightsOn(hour);
+
+  // 地面
+  for(let y=y0; y<y1; y++) for(let x=x0; x<x1; x++){
+    const i = idx(x,y), t = map.type[i], v = map.variant[i];
+    let s;
+    switch(t){
+      case T.WATER:  s = waterSprite(v%3, waterFrame, neighborMask(x,y, j => map.type[j]!==T.WATER)); break;
+      case T.TREE:   s = treeSprite(v); break;
+      case T.ROAD:   s = roadSprite(neighborMask(x,y, j => map.type[j]===T.ROAD), v % 3, map.roadTier[i]); break;
+      case T.WIRE:   s = wireSprite(neighborMask(x,y, j => map.type[j]===T.WIRE || map.type[j]===T.BLD)); break;
+      case T.RUBBLE: s = rubbleSprite(v); break;
+      case T.BLD:    s = grassSprite(v%4); break;
+      case T.R: case T.C: case T.I: {
+        const d = map.density[i];
+        if(d === 0) s = lotSprite(t);
+        else s = t===T.R ? houseSprite(d,v,night) : t===T.C ? commSprite(d,v,night) : indSprite(d,v,night);
+        break;
+      }
+      default: s = map.park[i] ? parkSprite(v) : grassSprite(v%4);
+    }
+    ctx.drawImage(s, x*TS, y*TS);
+  }
+
+  // 地铁线（地面上的检修井盖）
+  for(let y=y0; y<y1; y++) for(let x=x0; x<x1; x++){
+    const i = idx(x,y);
+    if(!map.subway[i]) continue;
+    ctx.drawImage(subwaySprite(neighborMask(x,y, j => map.subway[j])), x*TS, y*TS);
+  }
+
+  // 多格建筑
+  for(const rec of game.buildings){
+    const d = BLD[rec.b];
+    if(rec.x+d.w < x0 || rec.x > x1 || rec.y+d.h < y0 || rec.y > y1) continue;
+    ctx.drawImage(bldSprite(rec.b, night, !bldActive(rec)), rec.x*TS, rec.y*TS);
+  }
+
+  // 辐射
+  for(let y=y0; y<y1; y++) for(let x=x0; x<x1; x++){
+    const i = idx(x,y);
+    if(map.radiation[i] < 0.08) continue;
+    ctx.globalAlpha = clamp(map.radiation[i]*0.5, 0, .5);
+    ctx.drawImage(radSprite(), x*TS, y*TS);
+    ctx.globalAlpha = 1;
+  }
+
+  // 火焰
+  for(let y=y0; y<y1; y++) for(let x=x0; x<x1; x++){
+    const i = idx(x,y);
+    if(!map.onFire[i]) continue;
+    ctx.drawImage(fireSprite((fireFrame + x*3 + y*5) % 4), x*TS, y*TS);
+  }
+
+  // 龙卷风
+  if(game.tornado){
+    const s = game.tornado, tx = s.x*TS, ty = s.y*TS;
+    ctx.fillStyle = "rgba(60,55,50,.72)";
+    for(let k=0;k<11;k++){
+      const w = 7 + k*5.4, off = Math.sin((game.ticks*0.5 + k)*0.9) * (4+k*1.6);
+      ctx.fillRect(tx - w/2 + off, ty - 66 + k*8, w, 8);
+    }
+    ctx.fillStyle = "rgba(30,28,26,.9)";
+    ctx.fillRect(tx-7, ty-10, 14, 18);
+  }
+
+  // 夜色
+  if(overlay.key === "none"){
+    const tint = skyTint(hour);
+    if(tint){
+      ctx.fillStyle = tint;
+      ctx.fillRect(x0*TS, y0*TS, (x1-x0)*TS, (y1-y0)*TS);
+    }
+    const wt = WEATHER[game.weather].tint;
+    if(wt){
+      ctx.globalAlpha = game.wIntensity;
+      ctx.fillStyle = wt;
+      ctx.fillRect(x0*TS, y0*TS, (x1-x0)*TS, (y1-y0)*TS);
+      ctx.globalAlpha = 1;
+    }
+    drawWeather(ctx, x0, y0, x1, y1);
+  }
+
+  // 车流 / 行人 / 烟 / 消防车（数据视图下隐藏，免得盖住热力图）
+  // 画在天色之后，这样夜里车灯和路口信号灯不会被夜色压暗
+  if(overlay.key === "none") drawAgents(ctx, x0, y0, x1, y1, night);
+
+  // 数据视图
+  if(overlay.key !== "none"){
+    ctx.fillStyle = "rgba(10,12,18,.55)";
+    ctx.fillRect(x0*TS, y0*TS, (x1-x0)*TS, (y1-y0)*TS);
+    for(let y=y0; y<y1; y++) for(let x=x0; x<x1; x++){
+      const i = idx(x,y);
+      const v = overlay.get(i);
+      if(v < 0) continue;
+      // 犯罪、污染这类指标典型值只有 0.1~0.3，线性映射会全糊在暗端。
+      // 开 0.6 次方做感知提亮，小数值才分得出来。
+      const t = Math.pow(clamp(v,0,1), 0.6);
+      ctx.fillStyle = mixHex(overlay.grad[0], overlay.grad[1], t);
+      ctx.globalAlpha = overlay.binary ? .88 : (.52 + t*.40);
+      ctx.fillRect(x*TS, y*TS, TS, TS);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // 停电标记
+  if(cam.z >= 0.7 && overlay.key === "none"){
+    ctx.fillStyle = "#f2d94a";
+    for(let y=y0; y<y1; y++) for(let x=x0; x<x1; x++){
+      const i = idx(x,y);
+      if(!isZone(map.type[i]) || map.powered[i]) continue;
+      if((game.ticks + x + y) % 60 > 34) continue;
+      const bx = x*TS+12, by = y*TS+6;
+      ctx.fillRect(bx+4, by, 4, 8); ctx.fillRect(bx, by+8, 8, 4); ctx.fillRect(bx+2, by+12, 4, 8);
+    }
+  }
+
+  // 光标
+  if(hoverX >= 0 && !(COARSE && pointers.size === 0)){
+    let bw = 1, bh = 1;
+    if(currentTool.startsWith("b:")){ const d = BLD[bldIdx[currentTool.slice(2)]]; bw = d.w; bh = d.h; }
+    let ok = true;
+    for(let dy=0;dy<bh;dy++) for(let dx=0;dx<bw;dx++)
+      if(!inb(hoverX+dx,hoverY+dy) || !buildable(idx(hoverX+dx,hoverY+dy))) ok = false;
+    if(currentTool === "bulldoze") ok = inb(hoverX,hoverY) && map.type[idx(hoverX,hoverY)] !== T.WATER;
+    if(currentTool === "query") ok = true;
+    ctx.strokeStyle = ok ? "rgba(140,230,150,.95)" : "rgba(230,110,100,.95)";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(hoverX*TS+.5, hoverY*TS+.5, bw*TS-1, bh*TS-1);
+    if(currentTool !== "query"){
+      ctx.fillStyle = ok ? "rgba(140,230,150,.16)" : "rgba(230,110,100,.16)";
+      ctx.fillRect(hoverX*TS, hoverY*TS, bw*TS, bh*TS);
+    }
+    // 服务建筑显示覆盖范围
+    if(ok && currentTool.startsWith("b:")){
+      const d = BLD[bldIdx[currentTool.slice(2)]];
+      if(d.radius){
+        ctx.strokeStyle = "rgba(120,190,255,.55)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc((hoverX+(d.w>>1))*TS+TS/2, (hoverY+(d.h>>1))*TS+TS/2, d.radius*TS, 0, Math.PI*2);
+        ctx.stroke();
+      }
+    }
+  }
+  ctx.restore();
+}
+
+/* 小地图 */
+const mm = document.getElementById("minimap");
+const mmc = mm.getContext("2d");
+const mmSrc = document.createElement("canvas");
+mmSrc.width = W; mmSrc.height = H;
+const mmSrcCtx = mmSrc.getContext("2d");
+const mmImg = mmSrcCtx.createImageData(W, H);
+function drawMinimap(){
+  const d = mmImg.data;
+  const ov = overlay.key !== "none";
+  for(let i=0;i<N;i++){
+    let r,g,b;
+    if(ov){
+      const v = overlay.get(i);
+      if(v < 0){ r=20;g=22;b=28; }
+      else {
+        const c = mixHex(overlay.grad[0], overlay.grad[1], Math.pow(clamp(v,0,1),0.6)).match(/\d+/g);
+        r=+c[0]; g=+c[1]; b=+c[2];
+      }
+    } else {
+      const t = map.type[i];
+      if(map.onFire[i]){ r=242;g=140;b=60; }
+      else if(t===T.WATER){ r=36;g=86;b=133; }
+      else if(t===T.TREE){ r=37;g=77;b=34; }
+      else if(t===T.ROAD){ r=70;g=74;b=82; }
+      else if(t===T.WIRE){ r=120;g=120;b=130; }
+      else if(t===T.RUBBLE){ r=79;g=74;b=66; }
+      else if(t===T.BLD){ const c = BLD[map.bld[i]-1].sw; r=parseInt(c.slice(1,3),16); g=parseInt(c.slice(3,5),16); b=parseInt(c.slice(5,7),16); }
+      else if(t===T.R){ const k=map.density[i]; r=60+k*40; g=140+k*35; b=70+k*20; }
+      else if(t===T.C){ const k=map.density[i]; r=60+k*20; g=110+k*30; b=170+k*25; }
+      else if(t===T.I){ const k=map.density[i]; r=180+k*20; g=150+k*25; b=70+k*15; }
+      else if(map.park[i]){ r=90;g=160;b=80; }
+      else { r=72;g=122;b=59; }
+      if(map.radiation[i] > .1){ r=(r+122)>>1; g=(g+216)>>1; b=(b+106)>>1; }
+    }
+    const o=i*4; d[o]=r; d[o+1]=g; d[o+2]=b; d[o+3]=255;
+  }
+  mmSrcCtx.putImageData(mmImg,0,0);
+  mmc.imageSmoothingEnabled = false;
+  mmc.drawImage(mmSrc, 0,0,W,H, 0,0,128,128);
+  const vw = wrap.clientWidth/cam.z/TS, vh = wrap.clientHeight/cam.z/TS;
+  mmc.strokeStyle = "rgba(255,255,255,.75)"; mmc.lineWidth = 1;
+  mmc.strokeRect((cam.x/TS - vw/2)*2, (cam.y/TS - vh/2)*2, vw*2, vh*2);
+}
+
+/* =======================================================================
+   11. UI
+   ======================================================================= */
+const TOOLS = [
+  { g:"基础设施" },
+  { id:"road",   name:"街道",   cost:COST.road,   sw:"#5e6570", key:"1" },
+  { id:"avenue", name:"大道",   cost:COST.avenue, sw:"#7fa85c", key:"2" },
+  { id:"subway", name:"地铁线", cost:COST.subway, sw:"#4ac0a0", key:"3" },
+  { id:"wire",   name:"高压线", cost:COST.wire,   sw:"#8d939d", key:"4" },
+  { g:"分区" },
+  { id:"zoneR", name:"住宅区", cost:COST.zone, sw:"#5fbf6a", key:"5" },
+  { id:"zoneC", name:"商业区", cost:COST.zone, sw:"#5b9bd8", key:"6" },
+  { id:"zoneI", name:"工业区", cost:COST.zone, sw:"#d8b64a", key:"7" },
+];
+BLD.forEach((b,n) => {
+  if(!TOOLS.some(t => t.g === b.cat)) TOOLS.push({ g:b.cat });
+  TOOLS.push({ id:"b:"+b.key, name:b.name, cost:b.cost, sw:b.sw, size:b.w+"×"+b.h, unlock:b.unlock, perk:b.perk });
+});
+TOOLS.push({ g:"其他" },
+  { id:"park",     name:"公园",   cost:COST.park,     sw:"#7ec46a", key:"8" },
+  { id:"bulldoze", name:"推土机", cost:COST.bulldoze, sw:"#b0a06a", key:"9" },
+  { id:"query",    name:"查询",   cost:0,             sw:"#98a2b6", key:"0" });
+
+let currentTool = "road";
+function buildToolbar(){
+  const tb = document.getElementById("toolbar");
+  tb.innerHTML = "";
+  for(const t of TOOLS){
+    if(t.g){ const h=document.createElement("div"); h.className="tgroup"; h.textContent=t.g; tb.appendChild(h); continue; }
+    const b = document.createElement("button");
+    b.className = "tool" + (t.id===currentTool ? " on" : "");
+    b.dataset.id = t.id;
+    const locked = t.unlock && game.peakPop < t.unlock;
+    b.title = (t.size ? `${t.name}　占地 ${t.size}` : t.name)
+            + (t.unlock ? `　解锁人口 ${t.unlock.toLocaleString()}` : "")
+            + (t.perk ? `　${t.perk}` : "");
+    if(locked) b.classList.add("locked");
+    b.innerHTML = `<span class="sw" style="background:${t.sw}"></span><span class="nm">${t.name}</span>` +
+      `<span class="cost">${locked ? "🔒" + (t.unlock/1000) + "k" : (t.cost?"$"+t.cost:(t.key||""))}</span>`;
+    b.onclick = () => selectTool(t.id);
+    tb.appendChild(b);
+  }
+}
+let selectTool = function(id){
+  currentTool = id;
+  document.querySelectorAll(".tool").forEach(e => e.classList.toggle("on", e.dataset.id===id));
+  if(id !== "query") document.getElementById("query").style.display = "none";
+};
+
+function buildRCI(){
+  const el = document.getElementById("rci");
+  el.innerHTML = "";
+  for(const k of ["R","C","I"]){
+    const c = document.createElement("div");
+    c.className = "rci-col";
+    c.innerHTML = `<div class="rci-track"><div class="rci-mid"></div><div class="rci-bar" id="rci${k}"></div></div><div class="rci-lab">${k}</div>`;
+    el.appendChild(c);
+  }
+}
+const RCI_COL = { R:"#5fbf6a", C:"#5b9bd8", I:"#d8b64a" };
+function updateRCI(){
+  for(const k of ["R","C","I"]){
+    const bar = document.getElementById("rci"+k);
+    if(!bar) continue;
+    const v = clamp(game.demand[k], -1, 1);
+    bar.style.background = RCI_COL[k];
+    if(v >= 0){ bar.style.bottom = "50%"; bar.style.top = "auto"; }
+    else      { bar.style.top = "50%";    bar.style.bottom = "auto"; }
+    bar.style.height = Math.max(1, Math.abs(v)*12) + "px";
+    bar.style.opacity = 0.45 + Math.abs(v)*0.55;
+  }
+}
+
+function updateHUD(){
+  const totalPop = game.pop.R + game.pop.C + game.pop.I;
+  const m = document.getElementById("sMoney");
+  m.textContent = fmtMoney(game.money);
+  m.classList.toggle("neg", game.money < 0);
+  document.getElementById("sPop").textContent = totalPop.toLocaleString("en-US");
+  document.getElementById("sDate").textContent = game.year + "." + game.month;
+  document.getElementById("sWeather").textContent =
+    SEASON[game.season].nm + " · " + WEATHER[game.weather].nm;
+  const hh = hourNow();
+  document.getElementById("sClock").textContent =
+    String(Math.floor(hh)).padStart(2,"0") + ":" + String(Math.floor((hh%1)*60)).padStart(2,"0");
+  const flow = game.lastIncome - game.lastExpense;
+  const f = document.getElementById("sFlow");
+  f.textContent = (flow>=0?"+":"") + fmtMoney(flow);
+  f.classList.toggle("neg", flow < 0);
+
+  const pw = document.getElementById("sPower");
+  pw.textContent = Math.round(game.powerLoad) + "/" + game.powerCap;
+  pw.className = "v" + (game.powerCap && game.powerLoad > game.powerCap*0.9 ? " warn" : "");
+  const wt = document.getElementById("sWater");
+  wt.textContent = Math.round(game.waterLoad) + "/" + game.waterCap;
+  wt.className = "v" + (game.waterCap && game.waterLoad > game.waterCap*0.9 ? " warn" : "");
+  const mt = document.getElementById("sMetro");
+  mt.textContent = Math.round(game.transitRiders).toLocaleString("en-US");
+  mt.className = "v" + (game.metroStations >= 2 && game.metroLines === 0 ? " warn" : "");
+  const rt = document.getElementById("sRating");
+  rt.textContent = Math.round(game.rating);
+  rt.className = "v" + (game.rating < 35 ? " neg" : game.rating < 55 ? " warn" : "");
+  refreshBudget(); refreshGoals(); refreshCharts();
+  updateRCI();
+}
+
+function log(text, cls){
+  const box = document.getElementById("log");
+  if(!box) return;
+  const el = document.createElement("div");
+  el.className = "msg " + (cls||"");
+  el.textContent = text;
+  box.appendChild(el);
+  while(box.children.length > 6) box.removeChild(box.firstChild);
+  setTimeout(() => el.remove(), 9200);
+}
+
+function showQuery(x,y){
+  const q = document.getElementById("query");
+  if(!inb(x,y)){ q.style.display="none"; return; }
+  const i = idx(x,y), t = map.type[i];
+  let title;
+  if(t===T.BLD) title = BLD[map.bld[i]-1].name;
+  else title = { [T.LAND]: map.park[i]?"公园":"空地", [T.WATER]:"水域", [T.TREE]:"林地",
+                 [T.ROAD]:"道路", [T.WIRE]:"高压线", [T.R]:"住宅区", [T.C]:"商业区",
+                 [T.I]:"工业区", [T.RUBBLE]:"废墟" }[t] || "地块";
+  const rows = [["坐标", x+", "+y]];
+  if(t===T.BLD){
+    const rec = game.buildings.find(v => v.i === map.anchor[i]);
+    const d = BLD[rec.b];
+    rows.push(["状态", bldActive(rec) ? "运转中" : "未运转"]);
+    if(d.power)  rows.push(["发电", d.power]);
+    if(d.water)  rows.push(["产水", d.water]);
+    if(d.radius) rows.push(["覆盖半径", d.radius + " 格"]);
+    rows.push(["月维护", "$"+d.up]);
+  }
+  if(isZone(t)){
+    rows.push(["等级", map.density[i]===0 ? "空置" : "Lv "+map.density[i]]);
+    rows.push([t===T.R?"人口":"岗位", CAP[t][map.density[i]]]);
+    rows.push(["犯罪率", Math.round(map.crime[i]*100)+"%"]);
+  }
+  if(map.onFire[i]) rows.push(["⚠", "正在燃烧"]);
+  rows.push(["地价", Math.round(map.landval[i]*100)+"%"]);
+  rows.push(["污染", Math.round(map.pollution[i]*100)+"%"]);
+  rows.push(["教育覆盖", Math.round(map.edu[i]*100)+"%"]);
+  rows.push(["警力/消防", Math.round(map.polCov[i]*100)+"% / "+Math.round(map.fireCov[i]*100)+"%"]);
+  if(map.radiation[i] > .02) rows.push(["辐射", Math.round(map.radiation[i]*100)+"%"]);
+  rows.push(["电力", map.powered[i] ? "已接通" : (conduct(i) ? "未接通" : "—")]);
+  rows.push(["自来水", map.watered[i] ? "已接通" : (conduct(i) ? "未接通" : "—")]);
+  if(t===T.ROAD){
+    rows.push(["道路", map.roadTier[i] ? "大道（容量 ×2.5）" : "街道"]);
+    rows.push(["车流", Math.round(map.traffic[i]) + " / " + Math.round(capOf(i)) + " (" + Math.round(congestOf(i)*100) + "%)"]);
+  }
+  if(map.subway[i]) rows.push(["地下", "地铁线"]);
+  if(map.type[i]===T.R && map.density[i]>0) rows.push(["地铁接驳", map.transit[i] ? "可乘坐" : "步行范围外"]);
+  rows.push(["路网", map.roadDist[i]===255 ? "不通" : map.roadDist[i]+" 格"]);
+  q.innerHTML = `<h4>${title}</h4>` + rows.map(r => `<div class="row"><span>${r[0]}</span><span>${r[1]}</span></div>`).join("");
+  q.style.display = "block";
+}
+
+const SPEEDS = [ {l:"⏸",v:0}, {l:"▶",v:1}, {l:"▶▶",v:3}, {l:"▶▶▶",v:8} ];
+function buildSpeeds(){
+  const el = document.getElementById("speeds");
+  el.innerHTML = "";
+  for(const s of SPEEDS){
+    const b = document.createElement("button");
+    b.className = "sbtn" + (s.v===game.speed ? " on":"");
+    b.textContent = s.l;
+    b.onclick = () => { game.speed = s.v; buildSpeeds(); };
+    el.appendChild(b);
+  }
+}
+
+const TAX_ROWS  = [["R","住宅"],["C","商业"],["I","工业"]];
+const FUND_ROWS = [["police","警察"],["fire","消防"],["school","教育"],["road","道路养护"]];
+function buildBudget(){
+  const tr = document.getElementById("taxRows");
+  tr.innerHTML = "";
+  for(const [k,name] of TAX_ROWS){
+    const row = document.createElement("div");
+    row.className = "brow";
+    row.innerHTML = `<span class="nm">${name}</span>
+      <input type="range" min="0" max="20" step="1" value="${game.tax[k]}" data-tax="${k}">
+      <span class="val" data-taxv="${k}">${game.tax[k]}%</span>`;
+    tr.appendChild(row);
+    row.querySelector("input").addEventListener("input", e => {
+      game.tax[k] = +e.target.value;
+      row.querySelector("[data-taxv]").textContent = game.tax[k] + "%";
+      const rt = document.getElementById("sRating");
+  rt.textContent = Math.round(game.rating);
+  rt.className = "v" + (game.rating < 35 ? " neg" : game.rating < 55 ? " warn" : "");
+  refreshBudget(); refreshGoals(); refreshCharts();
+    });
+  }
+  const fr = document.getElementById("fundRows");
+  fr.innerHTML = "";
+  for(const [k,name] of FUND_ROWS){
+    const row = document.createElement("div");
+    row.className = "brow";
+    row.innerHTML = `<span class="nm">${name}</span>
+      <input type="range" min="0" max="150" step="5" value="${Math.round(game.funding[k]*100)}" data-fund="${k}">
+      <span class="val" data-fundv="${k}">${Math.round(game.funding[k]*100)}%</span>`;
+    fr.appendChild(row);
+    row.querySelector("input").addEventListener("input", e => {
+      game.funding[k] = +e.target.value / 100;
+      row.querySelector("[data-fundv]").textContent = e.target.value + "%";
+      const rt = document.getElementById("sRating");
+  rt.textContent = Math.round(game.rating);
+  rt.className = "v" + (game.rating < 35 ? " neg" : game.rating < 55 ? " warn" : "");
+  refreshBudget(); refreshGoals(); refreshCharts();
+    });
+  }
+  document.getElementById("btnBond").onclick = issueBond;
+  document.getElementById("btnBudgetClose").onclick = () => toggleBudget(false);
+  document.getElementById("btnBudget").onclick = () => toggleBudget();
+}
+function toggleBudget(force){
+  const el = document.getElementById("budget");
+  const show = force === undefined ? el.style.display !== "block" : force;
+  el.style.display = show ? "block" : "none";
+  if(show) syncBudget();
+}
+function syncBudget(){
+  for(const [k] of TAX_ROWS){
+    const inp = document.querySelector(`[data-tax="${k}"]`);
+    if(inp){ inp.value = game.tax[k]; document.querySelector(`[data-taxv="${k}"]`).textContent = game.tax[k] + "%"; }
+  }
+  for(const [k] of FUND_ROWS){
+    const inp = document.querySelector(`[data-fund="${k}"]`);
+    if(inp){ const v = Math.round(game.funding[k]*100);
+      inp.value = v; document.querySelector(`[data-fundv="${k}"]`).textContent = v + "%"; }
+  }
+  const rt = document.getElementById("sRating");
+  rt.textContent = Math.round(game.rating);
+  rt.className = "v" + (game.rating < 35 ? " neg" : game.rating < 55 ? " warn" : "");
+  refreshBudget(); refreshGoals(); refreshCharts();
+}
+function refreshBudget(){
+  const el = document.getElementById("budget");
+  if(!el || el.style.display !== "block") return;
+  document.getElementById("bIncome").textContent  = fmtMoney(game.lastIncome);
+  document.getElementById("bExpense").textContent = fmtMoney(game.lastExpense);
+  document.getElementById("bDebt").textContent    = fmtMoney(game.debtPay);
+  const net = game.lastIncome - game.lastExpense;
+  const nEl = document.getElementById("bNet");
+  nEl.textContent = (net>=0?"+":"") + fmtMoney(net);
+  nEl.style.color = net < 0 ? "#e2685e" : "#7ed88a";
+  document.getElementById("bBonds").textContent = game.bonds.length + " / 4";
+}
+
+const RATING_ROWS = [
+  ["balance","职住平衡","#5b9bd8"], ["safety","治安","#5fbf6a"], ["clean","环境","#7ec46a"],
+  ["flow","路况","#d8b64a"], ["edu","教育","#c98ad8"], ["fiscal","财政","#e0a24a"],
+  ["growth","增长","#4ac0a0"],
+];
+function buildGoals(){
+  document.getElementById("btnGoals").onclick = () => toggleGoals();
+  document.getElementById("btnGoalsClose").onclick = () => toggleGoals(false);
+}
+function toggleGoals(force){
+  const el = document.getElementById("goals");
+  const show = force === undefined ? el.style.display !== "block" : force;
+  el.style.display = show ? "block" : "none";
+  if(show) refreshGoals();
+}
+function refreshGoals(){
+  const el = document.getElementById("goals");
+  if(!el || el.style.display !== "block") return;
+  document.getElementById("gRating").textContent = Math.round(game.rating) + " / 100";
+  const parts = game.ratingParts || {};
+  document.getElementById("ratingBars").innerHTML = RATING_ROWS.map(([k,name,col]) => {
+    const v = Math.round((parts[k] || 0) * 100);
+    return `<div class="rbar"><span class="nm">${name}</span>
+      <span class="track"><span class="fill" style="width:${v}%;background:${col}"></span></span>
+      <span class="val">${v}</span></div>`;
+  }).join("");
+  const lm = BLD.filter(b => b.unlock);
+  document.getElementById("milestones").innerHTML = lm.map(b => {
+    const unlocked = game.peakPop >= b.unlock;
+    const built = !!game.landmarks[b.key];
+    const state = built ? "已建成" : unlocked ? "可建造" : `还差 ${(b.unlock - game.peakPop).toLocaleString()} 人`;
+    return `<div class="ms ${built ? "done" : ""}">
+      <span class="dot"></span>
+      <span class="t">${b.name}<span style="color:#5b6478"> · 人口 ${b.unlock.toLocaleString()}</span></span>
+      <span class="perk">${state}<br>${b.perk}</span></div>`;
+  }).join("");
+}
+
+/* 折线图。每条序列自己归一化到 0~1，再共用同一个坐标区。 */
+function drawSeries(cv, series, opts){
+  const g = cv.getContext("2d");
+  const W2 = cv.width, H2 = cv.height, PAD = 4;
+  g.clearRect(0,0,W2,H2);
+  g.fillStyle = "#171a21"; g.fillRect(0,0,W2,H2);
+  const n = series[0] ? series[0].data.length : 0;
+  // 网格
+  g.strokeStyle = "#242932"; g.lineWidth = 1;
+  for(let k=0;k<=4;k++){
+    const y = PAD + (H2-PAD*2) * k/4;
+    g.beginPath(); g.moveTo(0, y+.5); g.lineTo(W2, y+.5); g.stroke();
+  }
+  if(n < 2){
+    g.fillStyle = "#4d5566"; g.font = "11px monospace";
+    g.fillText("还没有足够的数据 —— 让城市先运行几个月", 12, H2/2);
+    return;
+  }
+  let lo = Infinity, hi = -Infinity;
+  for(const s2 of series) for(const v of s2.data){ if(v<lo) lo=v; if(v>hi) hi=v; }
+  if(opts && opts.zero) lo = Math.min(0, lo);
+  if(hi - lo < 1e-6) hi = lo + 1;
+  const pad = (hi-lo)*0.08; lo -= pad; hi += pad;
+  const X2 = k => (W2-2) * k/(n-1) + 1;
+  const Y2 = v => PAD + (H2-PAD*2) * (1 - (v-lo)/(hi-lo));
+  // 零线
+  if(lo < 0 && hi > 0){
+    g.strokeStyle = "#3a4250";
+    g.beginPath(); g.moveTo(0, Y2(0)+.5); g.lineTo(W2, Y2(0)+.5); g.stroke();
+  }
+  for(const s2 of series){
+    g.strokeStyle = s2.col; g.lineWidth = 1.6;
+    g.beginPath();
+    for(let k=0;k<n;k++){ const x=X2(k), y=Y2(s2.data[k]); k?g.lineTo(x,y):g.moveTo(x,y); }
+    g.stroke();
+  }
+  // 标尺
+  g.fillStyle = "#5b6478"; g.font = "9px monospace";
+  const fmt = opts && opts.money ? (v => fmtMoney(v)) : (v => Math.abs(v)>=1000 ? (v/1000).toFixed(1)+"k" : v.toFixed(v<10?2:0));
+  g.fillText(fmt(hi), 3, 10);
+  g.fillText(fmt(lo), 3, H2-3);
+}
+function refreshCharts(){
+  const el = document.getElementById("charts");
+  if(!el || el.style.display !== "block") return;
+  const h = game.history;
+  drawSeries(document.getElementById("chPop"), [
+    { data:h.R, col:"#5fbf6a" }, { data:h.C, col:"#5b9bd8" }, { data:h.I, col:"#d8b64a" },
+  ], { zero:true });
+  drawSeries(document.getElementById("chMoney"), [
+    { data:h.income, col:"#7ed88a" }, { data:h.expense, col:"#e2685e" },
+  ], { zero:true, money:true });
+  drawSeries(document.getElementById("chStat"), [
+    { data:h.rating.map(v=>v/100), col:"#f2c94c" },
+    { data:h.crime, col:"#e24a8a" },
+    { data:h.pol, col:"#8a6a3a" },
+    { data:h.traffic.map(v=>Math.min(v,2)/2), col:"#e2685e" },
+    { data:h.edu, col:"#c98ad8" },
+  ], { zero:true });
+}
+function toggleCharts(force){
+  const el = document.getElementById("charts");
+  const show = force === undefined ? el.style.display !== "block" : force;
+  el.style.display = show ? "block" : "none";
+  if(show) refreshCharts();
+}
+function buildCharts(){
+  document.getElementById("btnCharts").onclick = () => toggleCharts();
+  document.getElementById("btnChartsClose").onclick = () => toggleCharts(false);
+}
+
+function buildSelects(){
+  const ov = document.getElementById("overlay");
+  ov.innerHTML = OVERLAYS.map(o => `<option value="${o.key}">${o.name}</option>`).join("");
+  ov.onchange = () => {
+    overlay = OVERLAYS.find(o => o.key === ov.value);
+    const lg = document.getElementById("legend");
+    if(overlay.key === "none"){ lg.style.display = "none"; return; }
+    lg.style.display = "block";
+    lg.querySelector(".t").textContent = overlay.name;
+    lg.querySelector(".sc").innerHTML = Array.from({length:12},(_,k)=>
+      `<i style="background:${mixHex(overlay.grad[0],overlay.grad[1],k/11)}"></i>`).join("");
+    drawMinimap();
+  };
+  const dm = document.getElementById("disMenu");
+  dm.innerHTML = `<option value="">降灾…</option>` +
+    Object.entries(DISASTERS).map(([k,d]) => `<option value="${k}">${d.name}</option>`).join("");
+  dm.onchange = () => { if(dm.value){ DISASTERS[dm.value].run(); dm.value = ""; } };
+
+  const dt = document.getElementById("disToggle");
+  dt.onclick = () => {
+    game.disastersOn = !game.disastersOn;
+    dt.textContent = "灾难 " + (game.disastersOn ? "开" : "关");
+    dt.classList.toggle("on", game.disastersOn);
+  };
+}
+
+/* =======================================================================
+   11.5 程序化音效
+   全部用 Web Audio 合成，不需要任何音频素材——和「美术全部用代码画」是同一个约束。
+   几条常驻噪声轨用增益调制（城市底噪、车流、雨声），瞬时音再单独起振荡器。
+   ======================================================================= */
+const audio = { ctx:null, on:true, vol:0.5, nodes:null, started:false };
+
+function makeNoise(ctx, seconds, pink){
+  const len = ctx.sampleRate * seconds;
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  let b0=0,b1=0,b2=0;
+  for(let i=0;i<len;i++){
+    const white = Math.random()*2 - 1;
+    if(pink){
+      // 简易粉噪：三级一阶低通叠加，听感比白噪柔和得多
+      b0 = 0.99765*b0 + white*0.0990460;
+      b1 = 0.96300*b1 + white*0.2965164;
+      b2 = 0.57000*b2 + white*1.0526913;
+      d[i] = (b0+b1+b2+white*0.1848) * 0.22;
+    } else d[i] = white * 0.5;
+  }
+  return buf;
+}
+function initAudio(){
+  if(audio.ctx) return;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if(!AC) return;
+  const ctx = audio.ctx = new AC();
+  const master = ctx.createGain();
+  master.gain.value = audio.on ? audio.vol : 0;
+  master.connect(ctx.destination);
+
+  const track = (pink, freq, q, gain) => {
+    const src = ctx.createBufferSource();
+    src.buffer = makeNoise(ctx, 4, pink);
+    src.loop = true;
+    const flt = ctx.createBiquadFilter();
+    flt.type = "lowpass"; flt.frequency.value = freq; flt.Q.value = q;
+    const g = ctx.createGain(); g.gain.value = gain;
+    src.connect(flt); flt.connect(g); g.connect(master);
+    src.start();
+    return { src, flt, g };
+  };
+  audio.nodes = {
+    master,
+    city:    track(true,  420, 0.4, 0),      // 城市底噪
+    traffic: track(true,  900, 0.7, 0),      // 车流
+    rain:    track(false, 2600, 0.3, 0),     // 雨
+  };
+  audio.started = true;
+}
+/* 瞬时音：短促的振荡器 + 包络 */
+function blip(freq, dur, type, gain, slideTo){
+  if(!audio.ctx || !audio.on) return;
+  const ctx = audio.ctx, t = ctx.currentTime;
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = type || "square";
+  o.frequency.setValueAtTime(freq, t);
+  if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t+dur);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime((gain||0.1) * audio.vol, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(audio.nodes.master);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+const sfx = {
+  build:  () => blip(180, 0.09, "square",   0.08, 120),
+  zone:   () => blip(320, 0.07, "triangle", 0.07),
+  demolish:() => blip(140, 0.14, "sawtooth",0.07, 70),
+  deny:   () => blip(120, 0.13, "square",   0.09, 90),
+  ui:     () => blip(660, 0.04, "triangle", 0.05),
+  unlock: () => { blip(523,0.10,"triangle",0.09); setTimeout(()=>blip(659,0.10,"triangle",0.09),90);
+                  setTimeout(()=>blip(784,0.16,"triangle",0.09),180); },
+  siren:  () => {
+    if(!audio.ctx || !audio.on) return;
+    const ctx = audio.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "sine";
+    for(let k=0;k<4;k++){
+      o.frequency.setValueAtTime(660, t + k*0.34);
+      o.frequency.linearRampToValueAtTime(880, t + k*0.34 + 0.17);
+      o.frequency.linearRampToValueAtTime(660, t + k*0.34 + 0.34);
+    }
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.05 * audio.vol, t + 0.05);
+    g.gain.setValueAtTime(0.05 * audio.vol, t + 1.1);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+    o.connect(g); g.connect(audio.nodes.master);
+    o.start(t); o.stop(t + 1.45);
+  },
+  thunder: () => {
+    if(!audio.ctx || !audio.on) return;
+    const ctx = audio.ctx, t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = makeNoise(ctx, 1.6, true);
+    const flt = ctx.createBiquadFilter(); flt.type="lowpass"; flt.frequency.value=260;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.22 * audio.vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.5);
+    src.connect(flt); flt.connect(g); g.connect(audio.nodes.master);
+    src.start(t); src.stop(t + 1.6);
+  },
+};
+/* 常驻轨道的增益跟着城市状态走 */
+function updateAudioMix(){
+  if(!audio.started || !audio.ctx) return;
+  const n = audio.nodes, t = audio.ctx.currentTime, ramp = (node, v) => {
+    node.gain.setTargetAtTime(audio.on ? v : 0, t, 0.5);
+  };
+  const pop = game.pop.R + game.pop.C + game.pop.I;
+  const night = !((()=>{const h=hourNow(); return h<6.6||h>17.8;})());
+  ramp(n.city.g,    clamp(Math.log10(1+pop/120) * 0.045, 0, 0.10) * (night ? 1 : 0.55));
+  ramp(n.traffic.g, clamp(game.avgTraffic * 0.055, 0, 0.075) * (game.speed ? 1 : 0));
+  ramp(n.rain.g,    (isWet() ? 0.055 * game.wIntensity : isSnow() ? 0.012 : 0));
+  n.master.gain.setTargetAtTime(audio.on ? audio.vol : 0, t, 0.15);
+}
+
+/* =======================================================================
+   12. 存档
+   ======================================================================= */
+const SAVE_KEY = "pixelcity.save.v2";
+function u8ToB64(arr){
+  let s = "";
+  for(let i=0;i<arr.length;i+=8192) s += String.fromCharCode.apply(null, arr.subarray(i,i+8192));
+  return btoa(s);
+}
+function b64ToU8(str){
+  const bin = atob(str), out = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function serialize(){
+  const rad = new Uint8Array(N);
+  for(let i=0;i<N;i++) rad[i] = Math.round(map.radiation[i]*255);
+  return {
+    v: 2, seed: game.seed,
+    type: u8ToB64(map.type), density: u8ToB64(map.density), variant: u8ToB64(map.variant),
+    park: u8ToB64(map.park), onFire: u8ToB64(map.onFire), rad: u8ToB64(rad),
+    roadTier: u8ToB64(map.roadTier), subway: u8ToB64(map.subway),
+    age: u8ToB64(new Uint8Array(map.age.buffer.slice(0))),
+    blds: game.buildings.map(r => [r.x, r.y, r.b]),
+    g: { money:game.money, ticks:game.ticks, year:game.year, month:game.month,
+         tax:game.tax, funding:game.funding, bonds:game.bonds,
+         peakPop:game.peakPop, rating:game.rating,
+         season:game.season, weather:game.weather, history:game.history,
+         demand:game.demand, parks:game.parks, disastersOn:game.disastersOn },
+  };
+}
+function deserialize(s){
+  if(!s || s.v !== 2) throw new Error("存档格式不对");
+  genTerrain(s.seed);
+  map.type.set(b64ToU8(s.type));
+  map.density.set(b64ToU8(s.density));
+  map.variant.set(b64ToU8(s.variant));
+  map.park.set(b64ToU8(s.park));
+  map.onFire.set(b64ToU8(s.onFire));
+  if(s.roadTier) map.roadTier.set(b64ToU8(s.roadTier));
+  if(s.subway) map.subway.set(b64ToU8(s.subway));
+  if(s.age) new Uint8Array(map.age.buffer).set(b64ToU8(s.age));
+  const rad = b64ToU8(s.rad);
+  for(let i=0;i<N;i++) map.radiation[i] = rad[i]/255;
+
+  map.anchor.fill(-1); map.bld.fill(0);
+  game.buildings = [];
+  for(const [x,y,b] of s.blds){
+    const d = BLD[b], a = idx(x,y);
+    for(let dy=0;dy<d.h;dy++) for(let dx=0;dx<d.w;dx++){
+      const j = idx(x+dx,y+dy);
+      map.type[j] = T.BLD; map.bld[j] = b+1; map.anchor[j] = a;
+    }
+    game.buildings.push({ i:a, x, y, b });
+  }
+  Object.assign(game, s.g);
+  game.demand  = Object.assign({R:0,C:0,I:0}, s.g.demand);
+  // 兼容旧存档：以前 tax 是个数字，没有 funding / bonds
+  game.tax     = typeof s.g.tax === "number" ? { R:s.g.tax, C:s.g.tax, I:s.g.tax }
+                                             : Object.assign({R:7,C:7,I:7}, s.g.tax);
+  game.funding = Object.assign({police:1,fire:1,school:1,road:1}, s.g.funding);
+  game.bonds   = Array.isArray(s.g.bonds) ? s.g.bonds : [];
+  game.peakPop = s.g.peakPop || 0;
+  game.rating  = s.g.rating === undefined ? 50 : s.g.rating;
+  game.season  = s.g.season === undefined ? seasonOf(game.month) : s.g.season;
+  game.weather = s.g.weather || "clear";
+  const emptyH = { t:[],R:[],C:[],I:[],money:[],income:[],expense:[],rating:[],crime:[],pol:[],traffic:[],edu:[] };
+  game.history = Object.assign(emptyH, s.g.history || {});
+  SE = game.season; spriteCache.clear();
+  game.tornado = null;
+  computeScenic();
+  updateRoadDist(); updatePower(); updateWater(); updateCoverage();
+  updateTransit(); updateTraffic(); updatePollution(); updateCrime(); updateLandValue();
+  const dt = document.getElementById("disToggle");
+  dt.textContent = "灾难 " + (game.disastersOn ? "开" : "关");
+  dt.classList.toggle("on", game.disastersOn);
+  buildSpeeds(); syncBudget(); updateHUD(); drawMinimap();
+}
+function saveGame(){
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(serialize()));
+    log("已存档到浏览器", "");
+  } catch(e){
+    log("浏览器存档失败，请用「导出」保存到文件", "warn");
+  }
+}
+function loadGame(){
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if(!raw){ log("还没有存档", "warn"); return; }
+    deserialize(JSON.parse(raw));
+    log("存档已读取", "");
+  } catch(e){ log("读档失败：" + e.message, "bad"); }
+}
+function exportGame(){
+  const blob = new Blob([JSON.stringify(serialize())], { type:"application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `pixelcity-${game.year}.${game.month}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  log("已导出存档文件", "");
+}
+
+/* =======================================================================
+   13. 输入
+   ======================================================================= */
+/* 指针事件统一鼠标与触摸：
+   桌面 —— 左键绘制、右键/中键拖动平移、滚轮缩放。
+   触摸 —— 单指绘制、双指平移+捏合缩放；也可以打开「移动」模式让单指改为平移。
+   两套走同一条代码路径，避免 mouse/touch 双实现互相打架。 */
+let dragging = false, panning = false, panStart = null, lastPaint = -1;
+let panMode = false;                       // 移动端的单指平移开关
+const pointers = new Map();                // pointerId -> {x,y}
+let pinch = null;                          // {dist, cx, cy, camX, camY, z}
+
+const localXY = e => {
+  const r = cv.getBoundingClientRect();
+  return [e.clientX - r.left, e.clientY - r.top];
+};
+function midOf(){
+  const pts = [...pointers.values()];
+  return [(pts[0].x+pts[1].x)/2, (pts[0].y+pts[1].y)/2];
+}
+function distOf(){
+  const pts = [...pointers.values()];
+  return Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+}
+function beginPinch(){
+  dragging = false; panning = false;
+  const [mx,my] = midOf();
+  pinch = { dist: Math.max(1, distOf()), mx, my, camX: cam.x, camY: cam.y, z: cam.z };
+}
+
+wrap.addEventListener("contextmenu", e => e.preventDefault());
+
+wrap.addEventListener("pointerdown", e => {
+  if(e.target !== cv) return;            // 点在浮层控件上，别当成操作地图
+  if(e.pointerType !== "mouse") e.preventDefault();
+  try { wrap.setPointerCapture(e.pointerId); } catch(_){}
+  const [sx,sy] = localXY(e);
+  pointers.set(e.pointerId, { x:sx, y:sy });
+
+  if(pointers.size === 2){ beginPinch(); return; }
+  if(pointers.size > 2) return;
+
+  // 右键 / 中键 / 平移模式 -> 拖动地图
+  if(e.button === 2 || e.button === 1 || (panMode && e.pointerType !== "mouse")){
+    panning = true; panStart = { sx, sy, cx: cam.x, cy: cam.y };
+    return;
+  }
+  const [tx,ty] = screenToTile(sx,sy);
+  hoverX = tx; hoverY = ty;
+  if(currentTool === "query"){ showQuery(tx,ty); return; }
+  dragging = true; lastPaint = -1;
+  paint(tx,ty);
+});
+
+wrap.addEventListener("pointermove", e => {
+  const [sx,sy] = localXY(e);
+  if(pointers.has(e.pointerId)) pointers.set(e.pointerId, { x:sx, y:sy });
+
+  // 双指：捏合缩放 + 同时平移
+  if(pointers.size === 2 && pinch){
+    e.preventDefault();
+    const d = Math.max(1, distOf());
+    const [mx,my] = midOf();
+    const vw = wrap.clientWidth, vh = wrap.clientHeight;
+    // 以捏合起点在世界中的位置为锚，缩放后把它拉回当前手指中点
+    const ax = (pinch.mx - vw/2)/pinch.z + pinch.camX;
+    const ay = (pinch.my - vh/2)/pinch.z + pinch.camY;
+    cam.z = clamp(pinch.z * (d / pinch.dist), ZOOM_MIN, ZOOM_MAX);
+    cam.x = ax - (mx - vw/2)/cam.z;
+    cam.y = ay - (my - vh/2)/cam.z;
+    clampCam();
+    return;
+  }
+
+  if(panning && panStart){
+    cam.x = panStart.cx - (sx - panStart.sx)/cam.z;
+    cam.y = panStart.cy - (sy - panStart.sy)/cam.z;
+    clampCam(); return;
+  }
+  const [tx,ty] = screenToTile(sx,sy);
+  hoverX = tx; hoverY = ty;
+  if(dragging) paint(tx,ty);
+});
+
+function endPointer(e){
+  pointers.delete(e.pointerId);
+  if(pointers.size < 2) pinch = null;
+  if(pointers.size === 0){
+    dragging = false; panning = false; panStart = null;
+    if(e.pointerType !== "mouse") hoverX = -1;   // 触摸抬起后不该留个幽灵光标
+  }
+}
+wrap.addEventListener("pointerup", endPointer);
+wrap.addEventListener("pointercancel", endPointer);
+wrap.addEventListener("pointerleave", e => { if(e.pointerType === "mouse") hoverX = -1; });
+window.addEventListener("pointerup", e => { if(!wrap.contains(e.target)) endPointer(e); });
+
+wrap.addEventListener("wheel", e => {
+  e.preventDefault();
+  const r = cv.getBoundingClientRect();
+  const sx = e.clientX - r.left, sy = e.clientY - r.top;
+  const bx = (sx - wrap.clientWidth/2)/cam.z + cam.x;
+  const by = (sy - wrap.clientHeight/2)/cam.z + cam.y;
+  cam.z = clamp(cam.z * (e.deltaY < 0 ? 1.15 : 1/1.15), ZOOM_MIN, ZOOM_MAX);
+  cam.x = bx - (sx - wrap.clientWidth/2)/cam.z;
+  cam.y = by - (sy - wrap.clientHeight/2)/cam.z;
+  clampCam();
+}, { passive:false });
+
+function clampCam(){
+  const halfW = wrap.clientWidth/2/cam.z, halfH = wrap.clientHeight/2/cam.z;
+  const mw = W*TS, mh = H*TS;
+  cam.x = mw <= halfW*2 ? mw/2 : clamp(cam.x, halfW, mw-halfW);
+  cam.y = mh <= halfH*2 ? mh/2 : clamp(cam.y, halfH, mh-halfH);
+}
+
+window.addEventListener("keydown", e => {
+  if(e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  if(e.code === "Space"){
+    e.preventDefault();
+    game.speed = game.speed === 0 ? 1 : 0;
+    buildSpeeds(); return;
+  }
+  const t = TOOLS.find(t => t.key === e.key);
+  if(t) selectTool(t.id);
+  const pan = 40/cam.z;
+  if(e.key === "ArrowUp")    cam.y -= pan;
+  if(e.key === "ArrowDown")  cam.y += pan;
+  if(e.key === "ArrowLeft")  cam.x -= pan;
+  if(e.key === "ArrowRight") cam.x += pan;
+  clampCam();
+});
+
+function mmJump(e){
+  const r = mm.getBoundingClientRect();
+  cam.x = (e.clientX - r.left)/r.width  * W * TS;
+  cam.y = (e.clientY - r.top) /r.height * H * TS;
+  clampCam(); e.stopPropagation(); e.preventDefault();
+}
+mm.addEventListener("pointerdown", mmJump);
+mm.addEventListener("pointermove", e => { if(e.buttons || e.pointerType !== "mouse") mmJump(e); });
+
+// ---- 触摸辅助 ----
+function zoomBy(f){
+  const vw = wrap.clientWidth, vh = wrap.clientHeight;
+  const ax = cam.x, ay = cam.y;          // 以屏幕中心为锚
+  cam.z = clamp(cam.z * f, ZOOM_MIN, ZOOM_MAX);
+  cam.x = ax; cam.y = ay;
+  clampCam();
+}
+document.getElementById("btnPan").onclick = e => {
+  panMode = !panMode;
+  e.currentTarget.classList.toggle("on", panMode);
+  sfx.ui();
+};
+document.getElementById("btnZoomIn").onclick  = () => { zoomBy(1.35); sfx.ui(); };
+document.getElementById("btnZoomOut").onclick = () => { zoomBy(1/1.35); sfx.ui(); };
+document.getElementById("btnSec").onclick = e => {
+  document.body.classList.toggle("showsec");
+  e.currentTarget.classList.toggle("on", document.body.classList.contains("showsec"));
+};
+// 选了建造类工具就自动退出平移模式，免得点半天没反应
+const _selectTool = selectTool;
+selectTool = function(id){
+  _selectTool(id);
+  if(panMode && id !== "query"){
+    panMode = false;
+    const b2 = document.getElementById("btnPan");
+    if(b2) b2.classList.remove("on");
+  }
+};
+document.getElementById("btnSound").onclick = e => {
+  audio.on = !audio.on;
+  e.target.textContent = "♪ " + (audio.on ? "开" : "关");
+  e.target.classList.toggle("on", audio.on);
+  if(audio.on){ initAudio(); sfx.ui(); }
+  updateAudioMix();
+};
+document.getElementById("vol").addEventListener("input", e => {
+  audio.vol = +e.target.value / 100;
+  updateAudioMix();
+});
+// 浏览器要求音频必须由用户操作触发
+window.addEventListener("pointerdown", () => { if(audio.on) initAudio(); }, { once:true });
+
+document.getElementById("btnSave").onclick   = saveGame;
+document.getElementById("btnLoad").onclick   = loadGame;
+document.getElementById("btnExport").onclick = exportGame;
+document.getElementById("btnImport").onclick = () => document.getElementById("fileIn").click();
+document.getElementById("fileIn").onchange = e => {
+  const f = e.target.files[0];
+  if(!f) return;
+  const fr = new FileReader();
+  fr.onload = () => {
+    try { deserialize(JSON.parse(fr.result)); log("存档已导入", ""); }
+    catch(err){ log("导入失败：" + err.message, "bad"); }
+  };
+  fr.readAsText(f);
+  e.target.value = "";
+};
+document.getElementById("btnNew").onclick = () => {
+  if(!confirm("重新生成地图？当前进度会丢失（可先存档）。")) return;
+  newGame();
+};
+
+/* =======================================================================
+   14. 主循环
+   ======================================================================= */
+let acc = 0, last = performance.now(), mmAcc = 0;
+const TICK_MS = 500;
+function frame(now){
+  const dt = Math.min(now - last, 200);
+  last = now;
+  if(game.speed > 0){
+    acc += dt * game.speed;
+    let guard = 0;
+    while(acc >= TICK_MS && guard++ < 12){ acc -= TICK_MS; tick(); }
+  }
+  tickFrac = game.speed > 0 ? Math.min(acc / TICK_MS, 1) : 0;
+  waterFrame = Math.floor(now/380) % 3;
+  fireFrame  = Math.floor(now/110) % 4;
+  updateAgents(dt/1000);
+  draw();
+  mmAcc += dt;
+  if(mmAcc > 400){ mmAcc = 0; drawMinimap(); updateHUD(); updateAudioMix(); }
+  requestAnimationFrame(frame);
+}
+
+function newGame(){
+  genTerrain((Math.random()*1e9)|0);
+  SE = 1; spriteCache.clear();
+  Object.assign(game, {
+    money: 25000, ticks: 0, year: 1900, month: 1, speed: 1,
+  tax: { R:7, C:7, I:7 },                           // 三类分区分开计税
+  funding: { police:1, fire:1, school:1, road:1 },  // 各部门拨款比例 0~1.5
+  bonds: [], debtPay: 0,                            // 市政债
+    pop:{R:0,C:0,I:0}, demand:{R:.55,C:.2,I:.35},
+    lastIncome:0, lastExpense:0, powerLoad:0, powerCap:0, waterLoad:0, waterCap:0,
+    avgCrime:0, avgTraffic:0, avgPol:0, avgEdu:0, fires:0,
+    landmarks:{}, peakPop:0, rating:50, transitRiders:0, metroStations:0, metroLines:0,
+    season:1, weather:"clear", wIntensity:0, wTimer:0, unlockSeen:{},
+    history:{ t:[],R:[],C:[],I:[],money:[],income:[],expense:[],rating:[],crime:[],pol:[],traffic:[],edu:[] },
+  });
+  cam.x = W*TS/2; cam.y = H*TS/2; cam.z = IS_MOBILE ? 0.55 : IS_TABLET ? 0.8 : 1;
+  game.tax = { R:7, C:7, I:7 };
+  game.funding = { police:1, fire:1, school:1, road:1 };
+  game.bonds = []; game.debtPay = 0;
+  buildSpeeds(); syncBudget();
+  updateRoadDist(); updateLandValue(); updatePollution();
+  updateHUD(); drawMinimap();
+  log("市长，欢迎上任。先修路通电，划分区，再补上水厂和消防。", "");
+  if(COARSE) log("单指绘制，双指平移缩放；也可以点右下「移动」用单指拖地图", "");
+}
+
+function start(){
+  buildToolbar(); buildRCI(); buildSpeeds(); buildSelects(); buildBudget(); buildGoals(); buildCharts();
+  resize();
+  newGame();
+  requestAnimationFrame(frame);
+}
+start();
+
+</script>
+</body>
+</html>
