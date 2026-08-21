@@ -199,7 +199,9 @@
   }
 
   /* ---------- 横屏手机紧凑布局 ---------- */
-  body.touch #canvasWrap { touch-action: none; }
+  body.touch #canvasWrap, body.touch #cv { touch-action: none; }
+  body.touch #cv { -webkit-user-select: none; user-select: none;
+                   -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
   body.touch canvas { cursor: default; }
   body.touch .sbtn { min-height: 34px; padding: 6px 10px; }
   body.touch input[type=range] { height: 28px; }
@@ -248,6 +250,14 @@
   }
   @media (min-width: 901px) { #btnSec { display: none; } }
 
+  #diag {
+    position: absolute; right: max(10px, env(safe-area-inset-right)); top: 10px;
+    display: none; z-index: 30; max-width: 260px;
+    background: rgba(16,18,24,.96); border: 1px solid #3a4250; border-radius: 6px;
+    padding: 8px 10px; font-size: 10px; line-height: 1.65; color: #b6bfd0;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  #diag.show { display: block; }
   #minimap { position: absolute; left: max(10px, env(safe-area-inset-left)); top: 10px; border: 1px solid #333a48;
              image-rendering: pixelated; background: #0e1015; cursor: pointer; }
   #mmLabel { pointer-events: none; position: absolute; left: max(10px, env(safe-area-inset-left)); top: 142px; font-size: 9px; color: #6c7689; pointer-events: none; }
@@ -285,6 +295,7 @@
     <select id="disMenu"><option value="">降灾…</option></select>
   </div>
   <div class="btn-row sec">
+    <button class="sbtn" id="btnDiag">自检</button>
     <button class="sbtn" id="btnSave">存档</button>
     <button class="sbtn" id="btnLoad">读档</button>
     <button class="sbtn" id="btnExport">导出</button>
@@ -349,6 +360,7 @@
       <button class="tbtn" id="btnZoomIn">＋</button>
       <button class="tbtn" id="btnZoomOut">－</button>
     </div>
+    <div id="diag"></div>
     <div id="log"></div>
     <div id="hint">左键拖动绘制 · 右键拖动平移 · 滚轮缩放<br>数字键切换工具 · 空格暂停 · 点小地图跳转</div>
   </div>
@@ -3215,12 +3227,15 @@ const cam = { x: W*TS/2, y: H*TS/2, z: IS_MOBILE ? 0.55 : IS_TABLET ? 0.8 : 1 };
 
 function resize(){
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  // 首帧布局可能还没算完，clientWidth 为 0 会把画布设成 0×0，怎么点都点不中
+  if(wrap.clientWidth < 2 || wrap.clientHeight < 2) return false;
   cv.width  = wrap.clientWidth * dpr;
   cv.height = wrap.clientHeight * dpr;
   cv.style.width  = wrap.clientWidth + "px";
   cv.style.height = wrap.clientHeight + "px";
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.imageSmoothingEnabled = false;
+  return true;
 }
 window.addEventListener("resize", resize);
 window.addEventListener("orientationchange", () => setTimeout(() => { resize(); clampCam(); }, 250));
@@ -4125,6 +4140,43 @@ let sel = null;                            // {x,y,w,h}
 let contMode = false;                      // 连续建造
 const liftPx = () => COARSE ? TOUCH_LIFT * TS * cam.z : 0;
 
+/* ---- 指针几何 ---- */
+const localXY = e => {
+  const r = cv.getBoundingClientRect();
+  return [e.clientX - r.left, e.clientY - r.top];
+};
+function midOf(){
+  const pts = [...pointers.values()];
+  return [(pts[0].x + pts[1].x)/2, (pts[0].y + pts[1].y)/2];
+}
+function distOf(){
+  const pts = [...pointers.values()];
+  return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+}
+function beginPinch(){
+  dragging = false; panning = false;
+  const [mx,my] = midOf();
+  pinch = { dist: Math.max(1, distOf()), mx, my, camX: cam.x, camY: cam.y, z: cam.z };
+}
+
+/* 落笔：桌面拖动绘制、以及触摸端开了「连续」时走这里 */
+function paint(x,y){
+  if(!inb(x,y)) return;
+  const i = idx(x,y);
+  if(i === lastPaint) return;
+  lastPaint = i;
+  const before = game.money;
+  const done = place(currentTool, x, y);
+  if(game.money !== before){
+    updateHUD();
+    if(currentTool === "bulldoze") sfx.demolish();
+    else if(currentTool.startsWith("zone")) sfx.zone();
+    else sfx.build();
+  } else if(!done && currentTool !== "query" && game.money < 400) sfx.deny();
+  // 多格建筑一次放一个就够，别拖着连放
+  if(currentTool.startsWith("b:")) dragging = false;
+}
+
 function toolFootprint(tool){
   if(tool && tool.startsWith("b:")){ const d = BLD[bldIdx[tool.slice(2)]]; return [d.w, d.h, d.name]; }
   return [1, 1, ""];
@@ -4223,12 +4275,15 @@ function refreshActBar(){
       sel ? describeSel() + " · 无可用操作" : "点格子选中";
 }
 
-wrap.addEventListener("contextmenu", e => e.preventDefault());
+cv.addEventListener("contextmenu", e => e.preventDefault());
 
-wrap.addEventListener("pointerdown", e => {
-  if(e.target !== cv) return;            // 点在浮层控件上，别当成操作地图
+cv.addEventListener("pointerdown", e => {
+  evLog.down++; evLog.last = `${e.pointerType} down @${Math.round(e.clientX)},${Math.round(e.clientY)}`;
   if(e.pointerType !== "mouse") e.preventDefault();
-  try { wrap.setPointerCapture(e.pointerId); } catch(_){}
+  // 同一次手势里如果残留了上一轮没清干净的指针，会被误判成双指捏合，
+  // 表现就是「点了没反应」。主指针按下时先清场。
+  if(e.isPrimary && !dragging && !panning && !pinch) pointers.clear();
+  try { cv.setPointerCapture(e.pointerId); } catch(_){}
   const [sx,sy] = localXY(e);
   pointers.set(e.pointerId, { x:sx, y:sy });
 
@@ -4252,7 +4307,8 @@ wrap.addEventListener("pointerdown", e => {
   if(COARSE) setSel(tx, ty);
 });
 
-wrap.addEventListener("pointermove", e => {
+cv.addEventListener("pointermove", e => {
+  evLog.move++;
   const [sx,sy] = localXY(e);
   if(pointers.has(e.pointerId)) pointers.set(e.pointerId, { x:sx, y:sy });
 
@@ -4285,6 +4341,7 @@ wrap.addEventListener("pointermove", e => {
 });
 
 function endPointer(e){
+  if(e.type === "pointercancel") evLog.cancel++; else evLog.up++;
   pointers.delete(e.pointerId);
   if(pointers.size < 2) pinch = null;
   if(pointers.size === 0){
@@ -4292,12 +4349,13 @@ function endPointer(e){
     if(e.pointerType !== "mouse" && !sel) hoverX = -1;
   }
 }
-wrap.addEventListener("pointerup", endPointer);
-wrap.addEventListener("pointercancel", endPointer);
-wrap.addEventListener("pointerleave", e => { if(e.pointerType === "mouse") hoverX = -1; });
-window.addEventListener("pointerup", e => { if(!wrap.contains(e.target)) endPointer(e); });
+cv.addEventListener("pointerup", endPointer);
+cv.addEventListener("pointercancel", endPointer);
+cv.addEventListener("pointerleave", e => { if(e.pointerType === "mouse") hoverX = -1; });
+window.addEventListener("pointerup", endPointer);
+window.addEventListener("pointercancel", endPointer);
 
-wrap.addEventListener("wheel", e => {
+cv.addEventListener("wheel", e => {
   e.preventDefault();
   const r = cv.getBoundingClientRect();
   const sx = e.clientX - r.left, sy = e.clientY - r.top;
@@ -4378,6 +4436,32 @@ document.getElementById("btnCont").onclick = e => {
   sfx.ui();
 };
 
+/* 自检面板：真机上出问题时，截这张图就能定位，不用靠猜 */
+let diagOn = false, evLog = { down:0, move:0, up:0, cancel:0, last:"—" };
+document.getElementById("btnDiag").onclick = () => {
+  diagOn = !diagOn;
+  document.getElementById("diag").classList.toggle("show", diagOn);
+  sfx.ui();
+};
+function renderDiag(){
+  if(!diagOn) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const s2 = sel ? `(${sel.x},${sel.y}) ${sel.w}×${sel.h}` : "无";
+  document.getElementById("diag").textContent =
+    `触摸设备 COARSE=${COARSE} 手机=${IS_MOBILE}\n` +
+    `body class=${document.body.className || "（空）"}\n` +
+    `视口 ${window.innerWidth}×${window.innerHeight} dpr=${(window.devicePixelRatio||1).toFixed(2)}\n` +
+    `容器 ${wrap.clientWidth}×${wrap.clientHeight}\n` +
+    `画布 ${cv.width}×${cv.height}（应为容器×${dpr}）\n` +
+    `缩放 ${cam.z.toFixed(2)} 相机 ${Math.round(cam.x)},${Math.round(cam.y)}\n` +
+    `指针数 ${pointers.size} 拖动=${dragging} 平移=${panning} 捏合=${!!pinch}\n` +
+    `事件 down${evLog.down} move${evLog.move} up${evLog.up} cancel${evLog.cancel}\n` +
+    `最后一次 ${evLog.last}\n` +
+    `选中 ${s2}  工具 ${currentTool}\n` +
+    `可建=${canBuildSel()} 可拆=${canRazeSel()} 连续=${contMode}\n` +
+    `人口 ${game.pop.R+game.pop.C+game.pop.I} 资金 ${Math.round(game.money)} 速度 ${game.speed}`;
+}
+
 document.getElementById("btnPan").onclick = e => {
   panMode = !panMode;
   e.currentTarget.classList.toggle("on", panMode);
@@ -4448,12 +4532,17 @@ function frame(now){
     while(acc >= TICK_MS && guard++ < 12){ acc -= TICK_MS; tick(); }
   }
   tickFrac = game.speed > 0 ? Math.min(acc / TICK_MS, 1) : 0;
+  // 画布尺寸和容器对不上就重算：首帧布局未完成、旋转屏、地址栏收起都会触发
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if(Math.abs(cv.width - wrap.clientWidth*dpr) > 1 || Math.abs(cv.height - wrap.clientHeight*dpr) > 1){
+    if(resize()) clampCam();
+  }
   waterFrame = Math.floor(now/380) % 3;
   fireFrame  = Math.floor(now/110) % 4;
   updateAgents(dt/1000);
   draw();
   mmAcc += dt;
-  if(mmAcc > 400){ mmAcc = 0; drawMinimap(); updateHUD(); updateAudioMix(); }
+  if(mmAcc > 400){ mmAcc = 0; drawMinimap(); updateHUD(); updateAudioMix(); renderDiag(); }
   requestAnimationFrame(frame);
 }
 
