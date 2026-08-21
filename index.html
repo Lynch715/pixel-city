@@ -164,21 +164,27 @@
   }
   .tbtn.on { background: #35507a; border-color: #5b86c9; color: #eef4ff; }
 
-  /* 多格建筑的「先定位、再确认」条 */
-  #ghostbar {
-    position: absolute; left: 50%; transform: translateX(-50%);
+  /* 触摸端常驻操作条：先点格子选中，再按这里的按钮动手 */
+  #actbar {
+    position: absolute; left: max(10px, env(safe-area-inset-left));
     bottom: max(10px, env(safe-area-inset-bottom));
-    display: none; align-items: center; gap: 8px; z-index: 14;
+    display: none; align-items: center; gap: 7px; z-index: 14;
     background: rgba(20,23,30,.95); border: 1px solid #3a4250;
-    border-radius: 8px; padding: 7px 10px;
+    border-radius: 8px; padding: 6px 9px;
   }
-  #ghostbar.show { display: flex; }
-  #ghostName { font-size: 12px; color: #d8dde8; padding-right: 2px; }
-  .gbtn { border-radius: 6px; font-family: inherit; font-size: 13px;
-          height: 42px; padding: 0 16px; cursor: pointer; touch-action: manipulation; border: 1px solid; }
-  .gbtn.ok { background: #2f6b40; border-color: #4f9c62; color: #e8f7ec; }
-  .gbtn.ok:disabled { background: #3a3f47; border-color: #4a505a; color: #7d848e; }
-  .gbtn.no { background: #5f2f2c; border-color: #9c4a44; color: #f7e8e6; padding: 0 14px; }
+  body.touch #actbar { display: flex; }
+  #actWhat { font-size: 11px; color: #98a2b6; min-width: 88px; max-width: 150px;
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gbtn { border-radius: 6px; font-family: inherit; font-size: 13px; white-space: nowrap;
+          height: 42px; padding: 0 14px; cursor: pointer; touch-action: manipulation; border: 1px solid; }
+  .gbtn.ok   { background: #2f6b40; border-color: #4f9c62; color: #e8f7ec; }
+  .gbtn.no   { background: #5f2f2c; border-color: #9c4a44; color: #f7e8e6; }
+  .gbtn.up   { background: #2f5a7a; border-color: #4f8bb0; color: #e6f2f8; }
+  .gbtn.cont { background: #262b36; border-color: #333a48; color: #98a2b6; padding: 0 12px; }
+  .gbtn .tsw { width: 11px; height: 11px; border-radius: 2px; display: inline-block;
+               margin-right: 6px; vertical-align: -1px; }
+  .gbtn.cont.on { background: #35507a; border-color: #5b86c9; color: #eef4ff; }
+  .gbtn:disabled { background: #2a2f38 !important; border-color: #3a4048 !important; color: #626973 !important; }
 
   /* ---------- 竖屏引导 ---------- */
   #rotate {
@@ -218,7 +224,7 @@
     #minimap { width: 92px; height: 92px; }
     #mmLabel { top: 106px; }
     #hint { display: none; }
-    #log { width: 210px; bottom: calc(62px + env(safe-area-inset-bottom)); }
+    #log { width: 190px; bottom: calc(64px + env(safe-area-inset-bottom)); }
     .msg { font-size: 10px; padding: 3px 6px; }
     /* 面板改为贴合视口，内部滚动 */
     #budget, #goals, #charts {
@@ -331,10 +337,12 @@
         <div class="clegend"><i style="background:#f2c94c"></i>评分<i style="background:#e24a8a"></i>犯罪<i style="background:#8a6a3a"></i>污染<i style="background:#e2685e"></i>拥堵<i style="background:#c98ad8"></i>教育</div></div>
       <button class="sbtn" id="btnChartsClose" style="width:100%;margin-top:8px">关闭</button>
     </div>
-    <div id="ghostbar">
-      <span id="ghostName">燃煤电厂</span>
-      <button class="gbtn ok" id="btnGhostOk">✓ 建造</button>
-      <button class="gbtn no" id="btnGhostNo">✕</button>
+    <div id="actbar">
+      <span id="actWhat">未选中</span>
+      <button class="gbtn ok" id="btnBuild"><i class="tsw" id="buildSw"></i><span id="buildTxt">建造</span></button>
+      <button class="gbtn up" id="btnUpgrade">升级</button>
+      <button class="gbtn no" id="btnRaze">拆除</button>
+      <button class="gbtn cont" id="btnCont" title="连续建造：不再逐格确认">连续</button>
     </div>
     <div id="touchbar">
       <button class="tbtn" id="btnPan" title="单指平移地图">✥ 移动</button>
@@ -3379,29 +3387,34 @@ function draw(){
   }
 
   // 光标 / 虚影
-  const cur = ghost ? { x:ghost.x, y:ghost.y, w:ghost.w, h:ghost.h, tool:ghost.tool }
-            : (hoverX >= 0 && !(COARSE && pointers.size === 0 && !ghost))
+  // 触摸端画的是「选中框」（会一直留着），桌面端画的是跟随鼠标的光标
+  const cur = sel ? { x:sel.x, y:sel.y, w:sel.w, h:sel.h, tool:currentTool }
+            : (hoverX >= 0 && !COARSE)
               ? (() => { const [w,h] = toolFootprint(currentTool);
                          return { x:hoverX, y:hoverY, w, h, tool:currentTool }; })()
               : null;
   if(cur){
-    let ok = true;
-    for(let dy=0;dy<cur.h;dy++) for(let dx=0;dx<cur.w;dx++)
-      if(!inb(cur.x+dx,cur.y+dy) || !buildable(idx(cur.x+dx,cur.y+dy))) ok = false;
-    if(cur.tool === "bulldoze") ok = inb(cur.x,cur.y) && map.type[idx(cur.x,cur.y)] !== T.WATER;
-    if(cur.tool === "query") ok = true;
+    let ok;
+    if(sel) ok = canBuildSel() || canRazeSel() || !!upgradeOf();   // 能建、能升、能拆都算可操作
+    else {
+      ok = true;
+      for(let dy=0;dy<cur.h;dy++) for(let dx=0;dx<cur.w;dx++)
+        if(!inb(cur.x+dx,cur.y+dy) || !buildable(idx(cur.x+dx,cur.y+dy))) ok = false;
+      if(cur.tool === "bulldoze") ok = inb(cur.x,cur.y) && map.type[idx(cur.x,cur.y)] !== T.WATER;
+      if(cur.tool === "query") ok = true;
+    }
 
-    // 虚影模式下先把建筑本体半透明画出来，位置一目了然
-    if(ghost && ghost.tool.startsWith("b:")){
-      ctx.globalAlpha = .55;
-      ctx.drawImage(bldSprite(bldIdx[ghost.tool.slice(2)], night, false), cur.x*TS, cur.y*TS);
+    // 选中多格建筑时，把建筑本体半透明预览出来，位置一目了然
+    if(sel && currentTool.startsWith("b:") && ok){
+      ctx.globalAlpha = .5;
+      ctx.drawImage(bldSprite(bldIdx[currentTool.slice(2)], night, false), cur.x*TS, cur.y*TS);
       ctx.globalAlpha = 1;
     }
     ctx.strokeStyle = ok ? "rgba(140,230,150,.95)" : "rgba(230,110,100,.95)";
-    ctx.lineWidth = ghost ? 2.5 : 1.5;
+    ctx.lineWidth = sel ? 2.5 : 1.5;
     ctx.strokeRect(cur.x*TS+.5, cur.y*TS+.5, cur.w*TS-1, cur.h*TS-1);
-    if(cur.tool !== "query" && !ghost){
-      ctx.fillStyle = ok ? "rgba(140,230,150,.16)" : "rgba(230,110,100,.16)";
+    if(cur.tool !== "query"){
+      ctx.fillStyle = ok ? "rgba(140,230,150,.14)" : "rgba(230,110,100,.14)";
       ctx.fillRect(cur.x*TS, cur.y*TS, cur.w*TS, cur.h*TS);
     }
     // 四角标记，抬升偏移后靠它快速定位
@@ -3428,9 +3441,9 @@ function draw(){
   ctx.restore();
 
   // 触摸时在指尖和目标格之间连一根线，让「目标在手指上方」这件事显而易见
-  if(COARSE && pointers.size === 1 && hoverX >= 0 && !panning && !pinch){
+  if(COARSE && pointers.size === 1 && sel && !panning && !pinch){
     const pt = [...pointers.values()][0];
-    const tcx = (hoverX + (cur ? cur.w : 1)/2) * TS, tcy = (hoverY + (cur ? cur.h : 1)/2) * TS;
+    const tcx = (sel.x + sel.w/2) * TS, tcy = (sel.y + sel.h/2) * TS;
     const sxp = (tcx - cam.x)*cam.z + vw/2, syp = (tcy - cam.y)*cam.z + vh/2;
     ctx.strokeStyle = "rgba(200,230,255,.45)";
     ctx.lineWidth = 2;
@@ -4101,57 +4114,111 @@ function exportGame(){
    两套走同一条代码路径，避免 mouse/touch 双实现互相打架。 */
 let dragging = false, panning = false, panStart = null, lastPaint = -1;
 let panMode = false;                       // 移动端的单指平移开关
-/* 触摸放置：
-   1) 手指会挡住目标格，所以触摸时把目标点从指尖往上抬一格多；
-   2) 多格建筑一次点不准，改成「先放虚影、拖着调、再按确认」。 */
-const TOUCH_LIFT = 1.25;                   // 单位：格
-let ghost = null;                          // {tool, x, y, w, h}
+/* 触摸端的放置模型：**先点格子选中，再按操作条上的按钮动手**。
+   不是桌面那种「选好工具直接涂」——手指会挡住目标格，多格建筑更是一次点不准。
+   选中后可以拖着微调；操作条根据格子当前状态给出「建造」或「拆除」。
+   想快速铺路时打开「连续」，退回逐格即时生效。 */
+const TOUCH_LIFT = 1.25;                   // 目标格从指尖往上抬多少格
+let sel = null;                            // {x,y,w,h}
+let contMode = false;                      // 连续建造
 const liftPx = () => COARSE ? TOUCH_LIFT * TS * cam.z : 0;
 
 function toolFootprint(tool){
   if(tool && tool.startsWith("b:")){ const d = BLD[bldIdx[tool.slice(2)]]; return [d.w, d.h, d.name]; }
   return [1, 1, ""];
 }
-function ghostOk(){
-  if(!ghost) return false;
-  for(let dy=0;dy<ghost.h;dy++) for(let dx=0;dx<ghost.w;dx++){
-    if(!inb(ghost.x+dx, ghost.y+dy) || !buildable(idx(ghost.x+dx, ghost.y+dy))) return false;
+/* 当前工具能否落在选中的位置上 */
+function canBuildSel(){
+  if(!sel || currentTool === "query" || currentTool === "bulldoze") return false;
+  if(currentTool === "avenue"){
+    const i = idx(sel.x, sel.y);
+    if(map.type[i] === T.ROAD && !map.roadTier[i]) return true;   // 街道原地升级
+  }
+  if(currentTool === "subway") return inb(sel.x,sel.y) && map.type[idx(sel.x,sel.y)] !== T.WATER && !map.subway[idx(sel.x,sel.y)];
+  for(let dy=0;dy<sel.h;dy++) for(let dx=0;dx<sel.w;dx++){
+    if(!inb(sel.x+dx, sel.y+dy) || !buildable(idx(sel.x+dx, sel.y+dy))) return false;
   }
   return true;
 }
-function setGhost(tool, x, y){
-  const [w,h,name] = toolFootprint(tool);
-  // 让虚影中心落在手指抬升后的位置，而不是左上角
-  ghost = { tool, x: x - ((w-1)>>1), y: y - ((h-1)>>1), w, h };
-  const bar = document.getElementById("ghostbar");
-  document.getElementById("ghostName").textContent = name;
-  document.getElementById("btnGhostOk").disabled = !ghostOk();
-  bar.classList.add("show");
+/* 选中的格子上有没有可拆的东西 */
+function canRazeSel(){
+  if(!sel) return false;
+  const i = idx(sel.x, sel.y);
+  if(!inb(sel.x, sel.y)) return false;
+  const t = map.type[i];
+  if(t === T.WATER) return false;
+  if(t === T.LAND) return !!(map.park[i] || map.subway[i]);
+  return true;
 }
-function clearGhost(){
-  ghost = null;
-  const bar = document.getElementById("ghostbar");
-  if(bar) bar.classList.remove("show");
+/* 选中格上是什么 */
+function describeSel(){
+  if(!sel) return "未选中";
+  const i = idx(sel.x, sel.y), t = map.type[i];
+  if(t === T.BLD) return BLD[map.bld[i]-1].name;
+  if(isZone(t)){
+    const nm = t===T.R ? "住宅区" : t===T.C ? "商业区" : "工业区";
+    return map.density[i] ? `${nm} Lv${map.density[i]}` : `${nm}（空置）`;
+  }
+  if(t === T.ROAD)   return (map.roadTier[i] ? "大道" : "街道") + (map.subway[i] ? " + 地铁线" : "");
+  if(t === T.WIRE)   return "高压线";
+  if(t === T.TREE)   return "林地";
+  if(t === T.WATER)  return "水域";
+  if(t === T.RUBBLE) return "废墟";
+  if(map.park[i])    return "公园";
+  if(map.subway[i])  return "地铁线";
+  return "空地";
 }
-const pointers = new Map();                // pointerId -> {x,y}
-let pinch = null;                          // {dist, cx, cy, camX, camY, z}
+/* 选中格上有没有「升级」这个动作。
+   目前唯一可升级的是街道→大道：分区建筑是按需求自然长高的，玩家没法手动催，
+   所以不该给它们造一个假的升级按钮。 */
+function upgradeOf(){
+  if(!sel || !inb(sel.x, sel.y)) return null;
+  const i = idx(sel.x, sel.y);
+  if(map.type[i] === T.ROAD && !map.roadTier[i])
+    return { tool:"avenue", label:"升级为大道", cost: COST.avenue - COST.road };
+  return null;
+}
+function toolCost(){
+  if(currentTool.startsWith("b:")) return BLD[bldIdx[currentTool.slice(2)]].cost;
+  if(currentTool === "avenue" && sel && map.type[idx(sel.x,sel.y)] === T.ROAD) return COST.avenue - COST.road;
+  return COST[currentTool === "zoneR" || currentTool === "zoneC" || currentTool === "zoneI" ? "zone" : currentTool] || 0;
+}
+function toolLabel(){
+  const t = TOOLS.find(t => t.id === currentTool);
+  return t ? t.name : currentTool;
+}
+function setSel(x, y){
+  const [w,h] = toolFootprint(currentTool);
+  sel = { x: x - ((w-1)>>1), y: y - ((h-1)>>1), w, h };
+  refreshActBar();
+}
+function clearSel(){ sel = null; refreshActBar(); }
+function refreshActBar(){
+  const bar = document.getElementById("actbar");
+  if(!bar) return;
+  document.getElementById("actWhat").textContent = describeSel();
+  const bb = document.getElementById("btnBuild"),
+        ub = document.getElementById("btnUpgrade"),
+        rb = document.getElementById("btnRaze");
+  const up = upgradeOf(), okB = canBuildSel(), okR = canRazeSel();
 
-const localXY = e => {
-  const r = cv.getBoundingClientRect();
-  return [e.clientX - r.left, e.clientY - r.top];
-};
-function midOf(){
-  const pts = [...pointers.values()];
-  return [(pts[0].x+pts[1].x)/2, (pts[0].y+pts[1].y)/2];
-}
-function distOf(){
-  const pts = [...pointers.values()];
-  return Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
-}
-function beginPinch(){
-  dragging = false; panning = false;
-  const [mx,my] = midOf();
-  pinch = { dist: Math.max(1, distOf()), mx, my, camX: cam.x, camY: cam.y, z: cam.z };
+  // 「升级」和用大道工具建在街道上是同一件事，两个按钮同时出现会让人困惑
+  const showBuild = okB && !(up && currentTool === "avenue");
+  bb.style.display = showBuild ? "" : "none";
+  if(showBuild){
+    const t = TOOLS.find(t => t.id === currentTool);
+    document.getElementById("buildSw").style.background = t ? t.sw : "#98a2b6";
+    document.getElementById("buildTxt").textContent = `建造 ${toolLabel()} $${toolCost()}`;
+  }
+  ub.style.display = up ? "" : "none";
+  if(up) ub.textContent = `${up.label} $${up.cost}`;
+  rb.style.display = okR ? "" : "none";
+  if(okR) rb.textContent = `拆除 $${COST.bulldoze}`;
+
+  // 一个动作都没有时给句话，别让人对着空条发呆
+  if(!showBuild && !up && !okR)
+    document.getElementById("actWhat").textContent =
+      sel ? describeSel() + " · 无可用操作" : "点格子选中";
 }
 
 wrap.addEventListener("contextmenu", e => e.preventDefault());
@@ -4174,12 +4241,13 @@ wrap.addEventListener("pointerdown", e => {
   const [tx,ty] = screenToTile(sx, sy - liftPx());
   hoverX = tx; hoverY = ty;
   if(currentTool === "query"){ showQuery(tx,ty); return; }
-  // 触摸 + 多格建筑：先摆虚影，不直接落地
-  if(COARSE && currentTool.startsWith("b:")){
-    dragging = true; setGhost(currentTool, tx, ty); return;
+  // 触摸端：点格子只是「选中」，动手要按操作条上的按钮（开了连续则直接落地）
+  if(COARSE && !contMode){
+    dragging = true; setSel(tx, ty); return;
   }
   dragging = true; lastPaint = -1;
   paint(tx,ty);
+  if(COARSE) setSel(tx, ty);
 });
 
 wrap.addEventListener("pointermove", e => {
@@ -4209,8 +4277,9 @@ wrap.addEventListener("pointermove", e => {
   }
   const [tx,ty] = screenToTile(sx, sy - liftPx());
   hoverX = tx; hoverY = ty;
-  if(dragging && ghost){ setGhost(ghost.tool, tx, ty); return; }
+  if(dragging && COARSE && !contMode){ setSel(tx, ty); return; }
   if(dragging) paint(tx,ty);
+  if(dragging && COARSE) setSel(tx, ty);
 });
 
 function endPointer(e){
@@ -4218,7 +4287,7 @@ function endPointer(e){
   if(pointers.size < 2) pinch = null;
   if(pointers.size === 0){
     dragging = false; panning = false; panStart = null;
-    if(e.pointerType !== "mouse" && !ghost) hoverX = -1;   // 触摸抬起后不该留个幽灵光标
+    if(e.pointerType !== "mouse" && !sel) hoverX = -1;
   }
 }
 wrap.addEventListener("pointerup", endPointer);
@@ -4279,15 +4348,33 @@ function zoomBy(f){
   cam.x = ax; cam.y = ay;
   clampCam();
 }
-document.getElementById("btnGhostOk").onclick = () => {
-  if(!ghost) return;
+document.getElementById("btnBuild").onclick = () => {
+  if(!sel || !canBuildSel()) return;
   const before = game.money;
-  if(place(ghost.tool, ghost.x, ghost.y)){
-    updateHUD(); sfx.build();
-    clearGhost(); hoverX = -1;
+  if(place(currentTool, sel.x, sel.y)){
+    updateHUD();
+    currentTool === "bulldoze" ? sfx.demolish()
+      : currentTool.startsWith("zone") ? sfx.zone() : sfx.build();
   } else sfx.deny();
+  refreshActBar();
 };
-document.getElementById("btnGhostNo").onclick = () => { clearGhost(); hoverX = -1; sfx.ui(); };
+document.getElementById("btnUpgrade").onclick = () => {
+  const up = upgradeOf();
+  if(!up) return;
+  if(place(up.tool, sel.x, sel.y)){ updateHUD(); sfx.build(); } else sfx.deny();
+  refreshActBar();
+};
+document.getElementById("btnRaze").onclick = () => {
+  if(!sel || !canRazeSel()) return;
+  if(place("bulldoze", sel.x, sel.y)){ updateHUD(); sfx.demolish(); } else sfx.deny();
+  refreshActBar();
+};
+document.getElementById("btnCont").onclick = e => {
+  contMode = !contMode;
+  e.currentTarget.classList.toggle("on", contMode);
+  log(contMode ? "连续建造：拖动即落地，不再逐格确认" : "回到逐格确认", "");
+  sfx.ui();
+};
 
 document.getElementById("btnPan").onclick = e => {
   panMode = !panMode;
@@ -4304,7 +4391,7 @@ document.getElementById("btnSec").onclick = e => {
 const _selectTool = selectTool;
 selectTool = function(id){
   _selectTool(id);
-  clearGhost();
+  refreshActBar();
   if(panMode && id !== "query"){
     panMode = false;
     const b2 = document.getElementById("btnPan");
@@ -4392,8 +4479,8 @@ function newGame(){
   updateHUD(); drawMinimap();
   log("市长，欢迎上任。先修路通电，划分区，再补上水厂和消防。", "");
   if(COARSE){
-    log("单指绘制 · 双指平移缩放 · 右下「移动」可切成单指拖图", "");
-    log("目标格在指尖正上方（有连线指示），多格建筑会先出虚影，按「✓ 建造」落地", "");
+    log("空地：点格子 → 在左侧选建筑 → 按「建造」", "");
+    log("已建成：点它 → 按「升级」或「拆除」。双指平移缩放，铺路可开「连续」", "");
   }
 }
 
