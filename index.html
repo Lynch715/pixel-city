@@ -205,7 +205,7 @@
   body.touch input[type=range] { height: 28px; }
   body.touch .tool { padding: 8px 6px; margin-bottom: 5px; }
 
-  @media (max-height: 560px) {
+  @media (max-height: 700px) {
     #legend { bottom: auto; top: 8px; right: calc(184px + env(safe-area-inset-right)); }
     #topbar { padding: 4px 8px; gap: 9px; }
     .stat { min-width: 44px; gap: 0; }
@@ -4114,6 +4114,8 @@ function exportGame(){
    两套走同一条代码路径，避免 mouse/touch 双实现互相打架。 */
 let dragging = false, panning = false, panStart = null, lastPaint = -1;
 let panMode = false;                       // 移动端的单指平移开关
+const pointers = new Map();                // pointerId -> {x,y}，多指手势靠它判断
+let pinch = null;                          // {dist, mx, my, camX, camY, z}
 /* 触摸端的放置模型：**先点格子选中，再按操作条上的按钮动手**。
    不是桌面那种「选好工具直接涂」——手指会挡住目标格，多格建筑更是一次点不准。
    选中后可以拖着微调；操作条根据格子当前状态给出「建造」或「拆除」。
@@ -4486,6 +4488,7 @@ function newGame(){
 
 function start(){
   buildToolbar(); buildRCI(); buildSpeeds(); buildSelects(); buildBudget(); buildGoals(); buildCharts();
+  refreshActBar();
   resize();
   newGame();
   requestAnimationFrame(frame);
