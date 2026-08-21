@@ -3455,17 +3455,6 @@ function draw(){
   }
   ctx.restore();
 
-  // 触摸时在指尖和目标格之间连一根线，让「目标在手指上方」这件事显而易见
-  if(COARSE && pointers.size === 1 && sel && !panning && !pinch){
-    const pt = [...pointers.values()][0];
-    const tcx = (sel.x + sel.w/2) * TS, tcy = (sel.y + sel.h/2) * TS;
-    const sxp = (tcx - cam.x)*cam.z + vw/2, syp = (tcy - cam.y)*cam.z + vh/2;
-    ctx.strokeStyle = "rgba(200,230,255,.45)";
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(pt.x, pt.y); ctx.lineTo(sxp, syp + 6); ctx.stroke();
-    ctx.fillStyle = "rgba(200,230,255,.30)";
-    ctx.beginPath(); ctx.arc(pt.x, pt.y, 13, 0, Math.PI*2); ctx.fill();
-  }
 }
 
 /* 小地图 */
@@ -4132,13 +4121,12 @@ let panMode = false;                       // 移动端的单指平移开关
 const pointers = new Map();                // pointerId -> {x,y}，多指手势靠它判断
 let pinch = null;                          // {dist, mx, my, camX, camY, z}
 /* 触摸端的放置模型：**先点格子选中，再按操作条上的按钮动手**。
-   不是桌面那种「选好工具直接涂」——手指会挡住目标格，多格建筑更是一次点不准。
+   点哪一格就选哪一格，不做任何位置偏移——曾经试过把目标往指尖上方抬一格
+   来避免手指遮挡，但配上「选中后抬手再确认」这套流程纯属多余，反而很怪。
    选中后可以拖着微调；操作条根据格子当前状态给出「建造」或「拆除」。
    想快速铺路时打开「连续」，退回逐格即时生效。 */
-const TOUCH_LIFT = 1.25;                   // 目标格从指尖往上抬多少格
 let sel = null;                            // {x,y,w,h}
 let contMode = false;                      // 连续建造
-const liftPx = () => COARSE ? TOUCH_LIFT * TS * cam.z : 0;
 
 /* ---- 指针几何 ---- */
 const localXY = e => {
@@ -4295,7 +4283,7 @@ cv.addEventListener("pointerdown", e => {
     panning = true; panStart = { sx, sy, cx: cam.x, cy: cam.y };
     return;
   }
-  const [tx,ty] = screenToTile(sx, sy - liftPx());
+  const [tx,ty] = screenToTile(sx, sy);
   hoverX = tx; hoverY = ty;
   if(currentTool === "query"){ showQuery(tx,ty); return; }
   // 触摸端：点格子只是「选中」，动手要按操作条上的按钮（开了连续则直接落地）
@@ -4333,7 +4321,7 @@ cv.addEventListener("pointermove", e => {
     cam.y = panStart.cy - (sy - panStart.sy)/cam.z;
     clampCam(); return;
   }
-  const [tx,ty] = screenToTile(sx, sy - liftPx());
+  const [tx,ty] = screenToTile(sx, sy);
   hoverX = tx; hoverY = ty;
   if(dragging && COARSE && !contMode){ setSel(tx, ty); return; }
   if(dragging) paint(tx,ty);
